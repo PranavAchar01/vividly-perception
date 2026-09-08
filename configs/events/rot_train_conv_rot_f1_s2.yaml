@@ -1,0 +1,42 @@
+# Arm A of the pre-declared rotation grid (configs/events/rot_train_conv_rot_f*_s*.yaml),
+# fold F1 seed 20260901; the arm A mean over these 12 runs is reported in
+# research/seizure-push-1-protocol.md.
+# Val patients: ['pat01', 'pat04']; pool: ['pat01', 'pat02', 'pat04', 'pat05', 'pat09', 'pat11', 'pat13', 'pat14']; base recipe = train_convulsion_v2pose.yaml.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2pose
+  locations:
+  - pat01
+  - pat02
+  - pat04
+  - pat05
+  - pat09
+  - pat11
+  - pat13
+  - pat14
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260901
+  device: cpu
+out_dir: outputs/verifier/conv_rot/f1_s2
+holdout_locations:
+- pat01
+- pat04

@@ -1,0 +1,33 @@
+# Fall verifier v3 against the Montreal Multi-Cam test extraction: the single
+# pre-declared test look for this exam, under the measurement discipline in POLICY.md
+# section 5. This surface is the reference-camera view of the set; the all-cameras surface
+# carries the headline number, as recorded on final_models/fall/README.md. The purpose of v3
+# is recovering the overhead-like recall that the negative diet of fall v2 e9cebe4d lost
+# against fall v1 080b5d86: catches at threshold 0.5 fell from 21 to 15, with maxima of
+# 0.02 to 0.08 on the overhead-like cameras. That comparison is recorded in
+# research/event-verifier-v1-record.md.
+# The graph is the committed lane weight final_models/fall/model.onnx; its digest is in
+# final_models/fall/model.onnx.sha256 and its provenance is on final_models/fall/README.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_fallv3.yaml
+#
+# The window must equal the window in configs/events/train_fall_verifier_v3.yaml: the graph's
+# input geometry pins n_steps and the time scale pins window_s.
+# Multi-event videos (chute04, chute23) label through meta events_t; chute24 is the
+# staged confounder video (crouching and moving down, no fall), so a detection there at
+# any threshold is a headline false alarm, not a statistic.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: final_models/fall/model.onnx
+out_dir: outputs/verifier/fall_v3/eval_multicam

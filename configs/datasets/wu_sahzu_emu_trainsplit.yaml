@@ -1,0 +1,144 @@
+schema_version: 1
+name: wu_sahzu_emu_trainsplit
+display_name: WU-SAHZU-EMU trainsplit (4 convulsive-patient recordings, variant comparison)
+task: [detection]
+bucket: TRAIN_PROTOTYPE
+status: available
+licensing:
+  license: Apache-2.0 (per the Hugging Face dataset card)
+  license_url: https://huggingface.co/datasets/xuyankun/WU-SAHZU-EMU-Video
+  license_verbatim: >
+    license: apache-2.0 (dataset card metadata). Released with VSViG (ECCV 2024,
+    arXiv:2311.14775) by the Second Affiliated Hospital of Zhejiang University /
+    Westlake University group; the card states data were collected under hospital
+    ethics approval with patient consent and faces are masked.
+  license_conflict_note: >
+    The same conflict as wu_sahzu_emu (CQ-23): a permissive licence over real clinical
+    footage does not answer whether a for-profit may commercially use models influenced
+    by it. This entry additionally trains interim prototype weights, under the amended
+    grant of 2026-08-26, which pre-authorised a three-variant comparison after the
+    synthetic-only model scored 0 of 14 on real convulsive events. Weights are
+    prototype-class, for internal demonstration only, never deployed commercially
+    without counsel, and slated for replacement by clinical-pilot training (CQ-21).
+  commercial_use: conflicting
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-23-clinical-emu-video-use]
+  counsel_cleared_utc: "2026-08-26"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-26T08:00:00Z"
+    method: >
+      the same acquisition as wu_sahzu_emu, an ungated Hugging Face download; the
+      owner's grant of 2026-08-26 and its amendment authorise this train-split use
+    evidence_path: null
+  prototype_grant:
+    decision: wu-sahzu-exam-allocation
+    decided_utc: "2026-08-26"
+    decided_by: owner
+    attribution: >
+      WU-SAHZU-EMU-Video (Xu et al., VSViG, ECCV 2024; Second Affiliated Hospital of
+      Zhejiang University School of Medicine), arXiv:2311.14775
+    ship_policy: >
+      trains interim prototype convulsion verifiers only, the variants of the recorded
+      comparison; nothing trained on this data is deployed commercially or externally
+      distributed without counsel sign-off (CQ-23)
+  event_grant:
+    decision: wu-sahzu-exam-allocation
+    decided_utc: "2026-08-26"
+    decided_by: owner
+    role: train_interim
+provenance:
+  collector: >
+    Yankun Xu et al. (Westlake University / Zhejiang University; VSViG project),
+    recorded at the Second Affiliated Hospital of Zhejiang University School of
+    Medicine EMU
+  imagery_source: >
+    real epilepsy-monitoring-unit recordings of the four train-side convulsive (PG)
+    patients only, that is pat01, pat02, pat05 and pat13, with 8 seizure events in
+    total; 1080p30 wall-mounted or ceiling-mounted camera, faces masked upstream. The
+    pat05 and pat13 files are whole recordings, byte-for-byte copies from the wu_sahzu_emu
+    mirror and carrying the same sha256 values there; pat01 and pat02 are the
+    frame-accurate clips cut around clinical onset, so their bytes and sizes differ from
+    the whole recordings they come from.
+  contains_real_people: true
+  simulated_medical_events: false
+  real_medical_events: true
+  citation: >
+    Y. Xu, J. Wang, et al., "VSViG: Real-time Video-based Seizure Detection via
+    Skeleton-based Spatiotemporal ViG", ECCV 2024. arXiv:2311.14775. Dataset:
+    huggingface.co/datasets/xuyankun/WU-SAHZU-EMU-Video.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://huggingface.co/datasets/xuyankun/WU-SAHZU-EMU-Video
+  human_steps: []
+layout:
+  root: data/train_prototype/wu_sahzu_emu_trainsplit
+  images: {train: ., val: .}
+  annotations: {train: ., val: .}
+ann_format: wu_sahzu_label_xlsx
+converter: vividly.data.convert.wu_sahzu
+hashes_unavailable_reason: null
+# The patient split, enforced by the disjointness check in
+# tests/test_wu_sahzu_shootout.py and the `locations:` filters in configs/events/:
+#   train patients (this entry): pat01, pat02, pat05, pat13, convulsive PG, 8 events.
+#   testsplit of record for convulsion_v2_real (final_models/seizure/README.md):
+#   pat03, pat07, pat14 (PG, 6 events), pat04, pat09, pat11 (P, 7 events) and all 3
+#   non-seizure recordings.
+#   permanently exam-side, enforced by scripts/guards/check_train_data_paths.py, whose
+#   EXAM_LOCATIONS names pat06, pat08, pat10 and pat12 the focal exam and pat03 and
+#   pat07 the convulsive exam; an exam recording never trains. The focal four, whose
+#   onsets are uncertain, are measured as the E1 focal exam
+#   (configs/events/rot_eval_E1_finalB_v2c.yaml) and the unallocated supplement
+#   (configs/events/eval_wusahzu_unallocated_v2.yaml).
+#   the rotation recipes under configs/events/rot_train_conv_*.yaml train on a wider
+#   pool than this entry holds: configs/events/rot_train_conv_finalB_v2c.yaml lists the
+#   eight patients pat01, pat02, pat04, pat05, pat09, pat11, pat13 and pat14, so pat04,
+#   pat09, pat11 and pat14 train there while their bytes stay outside this entry.
+counts: {patients: 4, seizures: 8, videos: 8}
+# This entry is not derived_from wu_sahzu_emu in the registry's contamination sense:
+# both entries are independent slices of the same upstream Hugging Face release, with
+# byte-identical files whose hashes are above, split by patient. The contamination
+# control here is patient-level disjointness (tests/test_wu_sahzu_shootout.py), which is
+# stronger than tree lineage: no byte of a test patient exists under this root.
+derived_from: []
+notes: >
+  Training split for the variant comparison: the four patients whose bytes this entry
+  holds are the training split for the nine convulsion recipes pinned by
+  tests/test_wu_sahzu_shootout.py (v1_real and v1_synthreal, v2_real, the four v3 variants
+  v3_real, v3_h128, v3_d4 and v3_h128e90, v2pose and v6_real), from the interim comparison
+  variants (finalv1real and finalv1synthetic+real) through the seizure model of record,
+  convulsion_v2_real. The
+  rotation recipes under configs/events/rot_train_conv_*.yaml instead read the
+  eight-patient pool through the wu_sahzu track trees, bounded by the exam set that
+  scripts/guards/check_train_data_paths.py enforces. It
+  was created after the pre-registered synthetic-only evaluation caught 0 of 14 real
+  convulsive events (research/event-verifier-v1-record.md), under the pre-authorised
+  comparison branch. The split is at patient level: the bytes of these four patients
+  were copied out of the eval tree so that the physical separation of training and
+  evaluation holds; the wu_sahzu_emu entry keeps every patient for the pre-registered
+  number over all 33 events, and the comparison test reads only the six test patients
+  through `locations:` filters. Training windows come from a shared extraction run
+  directory, which is a build output under the gitignored outputs/ tree, filtered to
+  these patients by the same `locations:` mechanism: the interim comparison variants read
+  outputs/events/wu_sahzu_tracks_v1 (configs/events/train_convulsion_v1_real.yaml and
+  configs/events/train_convulsion_v1_synthreal.yaml), and the seizure model of record
+  reads outputs/events/wu_sahzu_tracks_v2
+  (configs/events/train_convulsion_v2_real.yaml). The current extraction generation is
+  v2c, declared in configs/events/extract_wu_sahzu_v2c.yaml. Event ground truth is
+  the interval from clinical onset to onset plus 120 s, taken from the wu_sahzu_emu
+  mirror's dataset/Label.xlsx: this entry's root holds patNN/*.mp4 with no workbook
+  beside them, and src/vividly/data/convert/wu_sahzu.py reads root/dataset/Label.xlsx of
+  the wu_sahzu_emu layout. The day-fraction handling is recorded in the converter
+  docstring.
+files:
+  - {name: pat01/Sz1PG.mp4, size_bytes: 137855339, sha256: 91a2ba68342fcc35ce72ce2a419892392fc07e9acef645ce365e3f3aa844e8ef}
+  - {name: pat01/Sz2PG.mp4, size_bytes: 247950853, sha256: 8b0a2ff53d6ba0dabf50d865068e2f2416eaa0af73f468a14d91297a62ccab6e}
+  - {name: pat02/Sz1PG.mp4, size_bytes: 220678812, sha256: 7b5283b71556032b7ed99221bd9b9719ca83b1f3e4ea50c22a80098b8453880e}
+  - {name: pat02/Sz2PG.mp4, size_bytes: 246717305, sha256: b749f49fc150061a04cbfea70570310928bd90deaef470cf02d50f40d0c18f80}
+  - {name: pat05/Sz1PG.mp4, size_bytes: 157067632, sha256: 0e5dea7f38eb4ba7b58b4c738b0d88deda4f43c53eb88a98b949c5574070e5a3}
+  - {name: pat05/Sz2PG.mp4, size_bytes: 127141536, sha256: c166de173fcccb129de8dc3e2a82c5c57813451dad78b6d666e99288b4a0371f}
+  - {name: pat05/Sz3PG.mp4, size_bytes: 114354919, sha256: ecd5d59b456b8aa0a0942398474502054c3d0719027bce95a3bdfbfcb9c5f193}
+  - {name: pat13/Sz1PG.mp4, size_bytes: 231140218, sha256: 2a6d9134c318a06a36121e95a211606949ce0f8cbd727288f894cf6a7e9bf00b}

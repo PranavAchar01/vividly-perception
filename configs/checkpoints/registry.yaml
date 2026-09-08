@@ -1,0 +1,194 @@
+# configs/checkpoints/registry.yaml
+# Vividly baseline checkpoint provenance registry.
+#
+# Read this before quoting any number from this file.
+#
+# **Average precision does not identify a checkpoint.** RTMPose-m AIC+COCO and RTMPose-l COCO-only
+#   are both AP 0.758. Always cite `sha256`, or at minimum `source_filename`, next to any accuracy
+#   number, on the lane pages under `final_models/`, in the evaluation `report.json` artefacts
+#   and in the documents under `research/`.
+#
+# **For RTMPose files the 8-hex token inside `source_filename` is not the sha256 prefix.**
+#   Verified 2026-08-07: d8dd5ca4 -> 929f00f2, 63eb25f7 -> 5e55be2a. Only `sha256` verifies integrity.
+#
+# **The standing preference for COCO-only pretrained weights on the shippable path is not
+#   satisfiable off the shelf.** Every published RTMPose checkpoint of every size carries the
+#   `pt-aic-coco` backbone (cspnext-m_udp-aic-coco_210e-256x192-f2f7d6f6_20230130.pth), so AI
+#   Challenger data is baked into the pretraining of even the COCO-only file. Both released
+#   RTMDet person detectors were trained on COCO + Objects365. See `counsel_flags` per entry and
+#   POLICY.md, rule 8, checkpoint provenance is recorded, never assumed. Shippability is a question
+#   for counsel, not an engineering question.
+#
+# **Scope.** This file records the five baseline checkpoints downloaded on 2026-08-07 and nothing
+#   else. No lane of record is trained from or exported out of one of them; where a released graph
+#   of one of these checkpoints is still read by a configuration, the entry's own notes say so.
+#   The initialisations and exported graphs of the five lanes are recorded on the lane pages under
+#   `final_models/<lane>/README.md`, and the trainer-side initialisation checkpoints are recorded
+#   in `third_party/PINS.yaml`.
+
+schema_version: 1
+generated: "2026-08-07"
+root: checkpoints/            # gitignored
+
+roles:
+  SHIPPABLE_BASE:  "May be loaded by code on the productionisable path, subject to counsel_flags being cleared."
+  FINETUNE_BASE:   "May appear as a `load_from` or an init in a training config under third_party/configs/."
+  EVAL_REFERENCE:  "Eval harness only. Must never appear in a `load_from` or in any exported artefact."
+
+checkpoints:
+
+  - id: rtmdet_m_coco
+    local_path: checkpoints/rtmdet_m_coco.pth
+    source_url: https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet_m_8xb32-300e_coco/rtmdet_m_8xb32-300e_coco_20220719_112220-229f527c.pth
+    source_filename: rtmdet_m_8xb32-300e_coco_20220719_112220-229f527c.pth
+    sha256: 229f527ca88498e8894a778a62a878a322b4a3ea2cae09ea537d34b7e907792b
+    size_bytes: 224299609
+    downloaded: "2026-08-07"
+    arch: RTMDet-m
+    upstream_config: "mmdet::rtmdet/rtmdet_m_8xb32-300e_coco.py"
+    input_size: [640, 640]
+    num_classes: 80
+    training_data: ["COCO 2017 detection (train2017)"]
+    backbone_pretrain:
+      what: "ImageNet-1k CSPNeXt RSB"
+      url: https://download.openmmlab.com/mmdetection/v3.0/rtmdet/cspnext_rsb_pretrain/cspnext-m_8xb256-rsb-a1-600e_in1k-ecb3bbd9.pth
+      data: ["ImageNet-1k"]
+    reported_metric: {name: "box AP (COCO val2017, 80-class)", value: 49.1, source: "mmdetection v3.2.0 configs/rtmdet/metafile.yml"}
+    reported_train_memory_gb: 27.8      # metafile, 8xb32
+    code_license: Apache-2.0
+    roles: [FINETUNE_BASE]
+    counsel_flags: []                   # cleanest provenance of the registered bases
+    notes: >
+      The clean-lineage detector base and the recorded fallback if counsel rules out
+      Objects365-derived weights. No configuration in this tree loads it: the detector of record is
+      RT-DETRv4-S, trained from third_party/configs/rtv4_s_person_v2_noteacher.yml. A 1-class person
+      fine-tune of this file would not load its 80-class head weights.
+
+  - id: rtmdet_m_person
+    local_path: checkpoints/rtmdet_m_person.pth
+    source_url: https://download.openmmlab.com/mmpose/v1/projects/rtmpose/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.pth
+    source_filename: rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.pth
+    sha256: 235e820939cb2ff33c505441e71f7e9532958c281636a963c6829d100867aed9
+    size_bytes: 99021988
+    downloaded: "2026-08-07"
+    arch: RTMDet-m
+    upstream_config: null               # see notes: no shipped config reproduces these weights
+    input_size: [640, 640]
+    num_classes: 1
+    params_m: 24.66
+    gflops: 38.95
+    training_data: ["COCO person", "Objects365 person"]
+    backbone_pretrain:
+      what: "unknown / not documented upstream"
+      url: null
+      data: ["UNVERIFIED"]
+    reported_metric: {name: "AP (COCO person)", value: 62.5, source: "mmpose v1.3.2 projects/rtmpose/README.md"}
+    code_license: Apache-2.0
+    roles: [SHIPPABLE_BASE, FINETUNE_BASE]
+    counsel_flags:
+      - id: OBJECTS365_WEIGHTS
+        question: >
+          Objects365 annotations are CC BY 4.0 but its images are Flickr-sourced "for research purposes"
+          with an explicit no-redistribution clause. Are model weights derived from those images usable in a
+          commercial product? (https://www.objects365.org/download.html)
+        blocks: "shipping this checkpoint or any descendant of it"
+        status: OPEN
+    notes: >
+      The shipped config projects/rtmpose/rtmdet/person/rtmdet_m_640-8xb32_coco-person.py is 300e / COCO-person /
+      ImageNet-pretrain and does not reproduce this 100e coco-obj365-person checkpoint. Architecture matches so it
+      loads, but do not cite that config as provenance evidence. No lane loads this .pth; the cached graph of the
+      same release is the box source recorded for the joints exam rows (final_models/joints/README.md).
+
+  - id: rtmdet_nano_person
+    local_path: checkpoints/rtmdet_nano_person.pth
+    source_url: https://download.openmmlab.com/mmpose/v1/projects/rtmpose/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth
+    source_filename: rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth
+    sha256: 05d8511e7b3fabc62e27d2f624179e004ad14ee63a86ca9d9d22c88f3db0eee1
+    size_bytes: 4224050
+    downloaded: "2026-08-07"
+    arch: RTMDet-nano
+    input_size: [320, 320]
+    num_classes: 1
+    params_m: 0.99
+    gflops: 0.31
+    training_data: ["COCO person", "Objects365 person"]
+    backbone_pretrain: {what: "unknown / not documented upstream", url: null, data: ["UNVERIFIED"]}
+    reported_metric: {name: "AP (COCO person)", value: 40.3, source: "mmpose v1.3.2 projects/rtmpose/README.md"}
+    code_license: Apache-2.0
+    roles: [SHIPPABLE_BASE, FINETUNE_BASE]
+    counsel_flags: [{id: OBJECTS365_WEIGHTS, status: OPEN}]
+    notes: >
+      The smallest registered person detector, 4 MB on disk. No lane loads this .pth; the released
+      ONNX build of the same checkpoint is the detector in the Mac smoke test
+      (configs/eval/smoke_mac.yaml). Its reported AP is the upstream figure recorded above, not a
+      number measured on this stack.
+
+  - id: rtmpose_m_coco_only
+    local_path: checkpoints/rtmpose_m_coco_only.pth
+    source_url: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-m_simcc-coco_pt-aic-coco_420e-256x192-d8dd5ca4_20230127.pth
+    source_filename: rtmpose-m_simcc-coco_pt-aic-coco_420e-256x192-d8dd5ca4_20230127.pth
+    sha256: 929f00f2d84764aa0297decf13a84556642e43cbf5fca8cfb16e7326d92dfd97
+    filename_token: d8dd5ca4            # not the sha256 prefix; verified 2026-08-07
+    size_bytes: 54535816
+    downloaded: "2026-08-07"
+    arch: RTMPose-m (SimCC)
+    upstream_config: "mmpose::body_2d_keypoint/rtmpose/coco/rtmpose-m_8xb256-420e_coco-256x192.py"
+    input_size: [192, 256]              # (w, h), MMPose convention
+    num_keypoints: 17
+    params_m: 13.59
+    gflops: 1.93
+    training_data: ["COCO 2017 keypoints"]
+    backbone_pretrain:
+      what: "CSPNeXt-m UDP pose pretrain"
+      url: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/cspnext-m_udp-aic-coco_210e-256x192-f2f7d6f6_20230130.pth
+      data: ["AI Challenger", "COCO"]   # this is what `pt-aic-coco` means; the backbone is not AIC-free
+    reported_metric: {name: "AP (COCO val2017)", value: 0.746, source: "mmpose v1.3.2 configs/body_2d_keypoint/rtmpose/coco/rtmpose_coco.yml"}
+    reported_metric_extra: {AP50: 0.899, AP75: 0.817, AR: 0.795}
+    code_license: Apache-2.0
+    roles: [SHIPPABLE_BASE, FINETUNE_BASE]
+    counsel_flags:
+      - id: AIC_PRETRAIN
+        question: >
+          AI Challenger data is present in the pretrained backbone of every published RTMPose checkpoint,
+          including this COCO-only one. Is an AIC-pretrained backbone acceptable in a shipped model?
+        blocks: "shipping this checkpoint or any descendant of it"
+        status: OPEN
+        clean_fallback: >
+          If the answer is no: retrain RTMPose-m from the ImageNet-1k CSPNeXt RSB pretrain
+          (cspnext-m_8xb256-rsb-a1-600e_in1k-ecb3bbd9.pth) instead of the udp-aic-coco pose pretrain.
+          Budget: one full 420e-class training run; the accuracy cost is unmeasured.
+    notes: >
+      A provenance record for a baseline no lane loads. The pose model of record is RTMPose-m person v2,
+      checkpoint a0a035fe, fine-tuned by third_party/configs/rtmpose_m_person_v2_ft.py from the body7
+      checkpoint e48f03d0 rather than from this file. MMPose's own demo and mmdeploy commands pair the
+      COCO config with the AIC+COCO checkpoint; copying them without change silently selects the wrong
+      weights. Always name the .pth explicitly.
+
+  - id: rtmpose_m_aic_coco_EVALREF
+    local_path: checkpoints/rtmpose_m_aic_coco_EVALREF.pth
+    source_url: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/rtmpose-m_simcc-aic-coco_pt-aic-coco_420e-256x192-63eb25f7_20230126.pth
+    source_filename: rtmpose-m_simcc-aic-coco_pt-aic-coco_420e-256x192-63eb25f7_20230126.pth
+    sha256: 5e55be2a03f6e5dcd14d088afc4ae5afe94a4f9de93c22e5deb725ad0eee899d
+    filename_token: 63eb25f7            # not the sha256 prefix; verified 2026-08-07
+    size_bytes: 54536690
+    downloaded: "2026-08-07"
+    arch: RTMPose-m (SimCC)             # byte-identical architecture to rtmpose_m_coco_only; the two files
+                                        # differ by 874 bytes in length and by their training corpus, not
+                                        # by anything structural
+    upstream_config: "mmpose::body_2d_keypoint/rtmpose/coco/rtmpose-m_8xb256-420e_aic-coco-256x192.py"
+    input_size: [192, 256]
+    num_keypoints: 17
+    training_data: ["AI Challenger", "COCO 2017 keypoints"]
+    backbone_pretrain:
+      what: "CSPNeXt-m UDP pose pretrain"
+      url: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/cspnext-m_udp-aic-coco_210e-256x192-f2f7d6f6_20230130.pth
+      data: ["AI Challenger", "COCO"]
+    reported_metric: {name: "AP (COCO val2017)", value: 0.758, source: "mmpose v1.3.2 configs/body_2d_keypoint/rtmpose/coco/rtmpose_coco.yml"}
+    reported_metric_extra: {AP50: 0.903, AP75: 0.826, AR: 0.806}
+    code_license: Apache-2.0
+    roles: [EVAL_REFERENCE]
+    counsel_flags: [{id: AIC_TRAINING_DATA, status: OPEN, blocks: "any shipping use at all"}]
+    notes: >
+      Upper-bound reference number only: the 1.2 AP between it and the COCO-only file is what the extra
+      pose data buys upstream. The _EVALREF suffix in the local filename is deliberate and is what the
+      CI guard greps for.

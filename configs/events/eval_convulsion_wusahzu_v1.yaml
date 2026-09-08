@@ -1,0 +1,37 @@
+# Convulsion verifier v1 (finalv1synthetic) against WU-SAHZU-EMU-Video, the full
+# 33-real-seizure held-out test. It was run before any real-data training existed, so the
+# synthetic-only model's number was uncontaminated by construction. This file is the
+# historical record of that pre-registered look, not a re-runnable exam: four patients on
+# this surface, pat01, pat02, pat05 and pat13, are now registered as a training split
+# (configs/datasets/wu_sahzu_emu_trainsplit.yaml, status available, prototype grant of
+# 2026-08-26), and this config sets no sources[].locations filter that would exclude them.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_convulsion_wusahzu_v1.yaml
+#
+# window: must equal configs/events/train_convulsion_verifier_v1.yaml's window. The
+# graph's input geometry pins n_steps and the time scale pins window_s.
+#
+# Headline number = the convulsive (PG) events only; focal (P) seizures often show
+# subtle or no convulsive motion and the verifier does not claim them. report.json's
+# per-video rows carry key, has_event, lie_transition, max_score and n_windows and no
+# seizure type; the per-type breakout is produced separately by
+# scripts/events/wu_sahzu_breakout.py, whose --report and --meta-dir flags join those rows
+# to the extraction meta and read its has_seizure and convulsive keys.
+# Event ground truth = [clinical onset, onset + 120 s] (upstream paper heuristic; no end times
+# ship). Windows between EEG onset and clinical onset count as negatives by the
+# definition of clinical onset; that caveat is recorded here rather than silently
+# absorbed.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v1
+model:
+  onnx: outputs/verifier/convulsion_v1/verifier.onnx
+out_dir: outputs/verifier/convulsion_v1/eval_wu_sahzu

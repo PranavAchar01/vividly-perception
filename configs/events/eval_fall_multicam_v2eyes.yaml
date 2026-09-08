@@ -1,0 +1,36 @@
+# Fall verifier v1 against the Montreal Multi-Cam test extraction taken through the
+# retired chained-lr25 prototype detector 1e9445c5. Same model 080b5d86, same window,
+# same thresholds; only the test extraction differs from eval_fall_multicam_v1.yaml.
+# The graph 080b5d86 is outputs/verifier/fall_v1/verifier.onnx, a build output: outputs/ is
+# gitignored, so this interim head exists only where it was trained, unlike the committed
+# lane weight final_models/fall/model.onnx.
+# That extraction's configuration is not carried in this repository, because the detector
+# it named belongs to a retired prototype generation whose held-out grading sets POLICY.md
+# rule 1 has since retired (research/event-verifier-v1-record.md); it changed the detector
+# alone against the v1 extraction, leaving pose, tracker and operating point identical.
+# Read the result with care: a gain means detection was the binding constraint, while a
+# loss may be feature distribution shift, because the verifier never saw tracks from that
+# detector.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_v2eyes.yaml
+#
+# window: must equal configs/events/train_fall_verifier_v1.yaml's window, because the
+# graph's input geometry pins n_steps and the time scale pins window_s.
+# Multi-event videos (chute04, chute23) label through meta events_t; chute24 is the
+# staged confounding video (crouching plus moving-down, no fall), so a detection there
+# at any threshold is a headline false alarm, not a statistic.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_tracks_v2
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v1/verifier.onnx
+out_dir: outputs/verifier/fall_v1/eval_multicam_lr25eyes

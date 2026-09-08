@@ -1,0 +1,42 @@
+# Final arm-B candidate (research/seizure-push-1-protocol.md): full 8-patient pool,
+# holdout pat02/pat09 for checkpoint selection only, seed 20260826.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2pose
+  locations:
+  - pat01
+  - pat02
+  - pat04
+  - pat05
+  - pat09
+  - pat11
+  - pat13
+  - pat14
+- dir: outputs/events/ajile12_neg_tracks_v1
+  force_label: 0
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/conv_finalB
+holdout_locations:
+- pat02
+- pat09

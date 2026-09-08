@@ -1,0 +1,40 @@
+# Fall F0 control recipe refit on the v2c track trees. That generation extracts with
+# eyes RT-DETRv4-S 345c30a5 (ONNX 4026204967aa) and pose RTMPose-m 6ba96285, re-extracted
+# 2026-09-07; the detector probe behind the movement is research/eyes-coupling-probe.md.
+# Seed 20260826.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_F0_v2c_s20260826.yaml
+#
+# Clone of train_fall_F0_s20260826.yaml with exactly two changes: the three source dirs
+# point at the *_tracks_v2c trees, and out_dir. Window geometry, pinned holdout
+# (Home_02, S4_ADL, S4_Fall, S9, S10), model and hyperparameters are identical.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v2c
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2c
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2c
+    event_keys: [fall_start_t, fall_end_t]
+holdout_locations: [Home_02, S4_ADL, S4_Fall, S9, S10]
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/fall_F0_v2c_s20260826

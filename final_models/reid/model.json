@@ -1,0 +1,14 @@
+{
+  "lane": "reid",
+  "kind": "reid",
+  "backend": "onnx",
+  "display_name": "OSNet-x1_0 MEVID Phase A",
+  "onnx": "model.onnx",
+  "onnx_sha256": "60164a9945445efbc5ea3d2abafb3fe0d78f1bcd2b4616ffd47634d87ef808a7",
+  "checkpoint_sha256": "66623239b93fc7a807b986b07fd2fcb2047ccf1e77d1988d96ba2575b8390bb7",
+  "input_size": [128, 256],
+  "embedding_dim": 512,
+  "weight_class": "prototype",
+  "training_data": "MEVID training split, 104 identities in 6,338 tracklets over 22 cameras, read as person chips; the test split of 54 identities in 1,754 tracklets was held out entirely and used only for the three evaluation protocols.",
+  "backbone_pretrain": "OSNet-x1_0 ImageNet-1k initialisation, checkpoint sha256 fe2d63f9157c28a4a8d8ca29bec12d5b2988ac0346d712025789ea9174968e79; no re-identification-pretrained weight anywhere in the lineage."
+}

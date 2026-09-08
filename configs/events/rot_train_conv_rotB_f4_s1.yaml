@@ -1,0 +1,42 @@
+# Arm B = arm A fold F4 seed s1 + AJILE12 negative diet (force_label 0).
+# Pre-declared in research/seizure-push-1-protocol.md; diet = ajile12_diet_v1.yaml.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2pose
+  locations:
+  - pat01
+  - pat02
+  - pat04
+  - pat05
+  - pat09
+  - pat11
+  - pat13
+  - pat14
+- dir: outputs/events/ajile12_neg_tracks_v1
+  force_label: 0
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/conv_rotB/f4_s1
+holdout_locations:
+- pat13
+- pat14

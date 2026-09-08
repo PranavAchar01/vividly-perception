@@ -1,0 +1,29 @@
+# v2pose exam: single-look protocol on the v2pose re-extraction of the
+# same held-out patients as the exam it clones (2026-09-04).
+# convulsion_v2pose, the alternative recorded on the seizure lane, on the same
+# held-out patient split as every comparison evaluation, which is the row that sets the
+# alternative against the model of record. Test extraction is the v2pose tree
+# wu_sahzu_tracks_v2pose, the re-extraction through the joints lane model of record,
+# because a model is tested through the front end it was trained on; the
+# patient split is identical to eval_wusahzu_testsplit_real.yaml and the geometry
+# is the shared comparison window. scene_channels must match the model's training window.
+# Paths under outputs/ are gitignored run directories built by the extraction and
+# evaluation steps, not files in version control.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_wusahzu_testsplit_v2pose.yaml
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v2pose
+    locations: [pat03, pat07, pat14, pat04, pat09, pat11]
+model:
+  onnx: outputs/verifier/convulsion_v2pose/verifier.onnx
+out_dir: outputs/verifier/convulsion_v2pose/eval_wusahzu_testsplit

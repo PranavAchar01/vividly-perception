@@ -1,0 +1,130 @@
+schema_version: 1
+name: gmdcsa24
+display_name: GMDCSA-24 (human fall detection in videos)
+task: [detection]
+bucket: TRAIN_PROTOTYPE
+status: available
+licensing:
+  license: CC BY 4.0 (Zenodo deposit) / MIT (GitHub repository LICENSE)
+  license_url: https://zenodo.org/records/12921216
+  license_verbatim: >
+    Zenodo record 12921216 (v2.0) license field: "CC BY 4.0". The GitHub
+    repository (ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos)
+    carries an MIT LICENSE file, "Copyright (c) 2024 Ekram Alam": "Permission is
+    hereby granted, free of charge, to any person obtaining a copy ... to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or sell copies";
+    "THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND". Both
+    grants permit commercial use and redistribution; attribution required.
+  license_conflict_note: >
+    No non-commercial and no share-alike clause under either grant. The dual
+    licensing, CC BY 4.0 on the Zenodo data deposit against MIT on the
+    repository, is recorded above word for word, and the stricter attribution
+    requirement, that of CC BY 4.0, is the one followed here. It is the acted
+    nature of the events, not the licence, that keeps weights in the prototype
+    class: interim training only, never quoted as clinical performance.
+  commercial_use: permitted
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-22-acted-fall-dataset-licenses]
+  counsel_cleared_utc: "2026-08-27"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-27T18:30:00Z"
+    method: >
+      admitted by the owner on 2026-08-27 for interim fall-verifier training,
+      after the licence brief of the same date
+      (research/fall-dataset-licences.md); ungated Zenodo http download
+    evidence_path: null
+  prototype_grant:
+    decision: fall-prototype-sets
+    decided_utc: "2026-08-27"
+    decided_by: owner
+    attribution: >
+      GMDCSA-24: E. Alam et al., "GMDCSA-24: A dataset for human fall detection
+      in videos", Data in Brief (2024), doi:10.1016/j.dib.2024.110892; Zenodo
+      doi:10.5281/zenodo.12921216 (v2.0), CC BY 4.0 / MIT.
+    ship_policy: >
+      trains interim prototype fall verifiers only, in the prototype weight
+      class; nothing trained on this data is deployed commercially or
+      externally distributed without counsel sign-off (CQ-22)
+  event_grant:
+    decision: fall-prototype-sets
+    decided_utc: "2026-08-27"
+    decided_by: owner
+    role: train_interim
+provenance:
+  collector: Ekram Alam et al. (GMDCSA-24 authors)
+  imagery_source: >
+    actors performing staged falls and activities of daily living: 4 subjects,
+    79 fall and 81 activity clips (160 in total), 720p at 30 fps from a laptop
+    webcam, three rooms; camera heights 70 to 90 cm, giving low and eye-level
+    angles with no overhead views; day and night attire and lighting variety
+  contains_real_people: true
+  simulated_medical_events: true
+  citation: >
+    E. Alam, A. Sufian, P. Dutta, M. Leo, I. A. Hameed, "GMDCSA-24: A dataset
+    for human fall detection in videos", Data in Brief 57 (2024) 110892.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://zenodo.org/records/12921216
+    - https://zenodo.org/api/records/12921216/files/ekramalam%2FGMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos-v2.0.zip/content
+    # Interval CSVs at the pinned GitHub commit (see notes: the Zenodo zip's CSVs
+    # predate the interval annotations; 5abac769 rewrote exactly those 8 files).
+    # Compact reference for the eight below: Subject%20{1..4}/{ADL,Fall}.csv; they
+    # are written out one per line because this list is machine-read and every
+    # entry has to be a single fetchable object.
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%201/ADL.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%201/Fall.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%202/ADL.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%202/Fall.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%203/ADL.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%203/Fall.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%204/ADL.csv
+    - https://raw.githubusercontent.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/5abac7693229900cf80f722e878fbb119211fc1c/Subject%204/Fall.csv
+  human_steps: []
+layout:
+  root: data/train_prototype/gmdcsa24
+  # val is the full set, following the le2i pattern, and is therefore contaminated
+  # for any weight trained on this data. Verifier test numbers come from ur_fall
+  # and multicam_fall.
+  images: {train: videos, val: videos}
+  annotations: {train: annotations, val: annotations}
+ann_format: gmdcsa24_csv
+converter: vividly.data.convert.gmdcsa24
+files:
+  # Landed 2026-08-27. Zip MD5 verified against Zenodo (49bf4eb15a84cc84cb0a4f9c6ddd59e6).
+  - {name: upstream/gmdcsa24_v2.zip, size_bytes: 1107543412, sha256: a19489feaed13501931cb46897e05e9ac5b8970a37c01672781d3b7870d08149}
+  - {name: annotations_upstream/Subject 1/ADL.csv, size_bytes: 2598, sha256: 9899703edb31776c5b837449f1a9c0efd9f1d84369f0b1443b63253abc38e3a2}
+  - {name: annotations_upstream/Subject 1/Fall.csv, size_bytes: 2491, sha256: 28e55e3fd60f791f02c821e91c2a64362a1dabdbd46a916279655eab83a49754}
+  - {name: annotations_upstream/Subject 2/ADL.csv, size_bytes: 3407, sha256: c83c19c116e14d82f644040dc07bb14474486c501cb760275a7397837798ea04}
+  - {name: annotations_upstream/Subject 2/Fall.csv, size_bytes: 3309, sha256: b6829461084e99183014ac72447ebd6879038e1093a23054f396de4426fbde60}
+  - {name: annotations_upstream/Subject 3/ADL.csv, size_bytes: 2991, sha256: e98afe16fb80677a06b7dd19769611cfed13e59eb0f85a7668ae22baf15bc3c2}
+  - {name: annotations_upstream/Subject 3/Fall.csv, size_bytes: 2943, sha256: 02a9a5f5c5f0b178510f6e512cf200b8f8a626ecea5c61a1e713046d73046470}
+  - {name: annotations_upstream/Subject 4/ADL.csv, size_bytes: 3092, sha256: 9b9a4aef43725126d8f8d9cf04a393ba98dfea9f30554e6391cc0584ea661c2d}
+  - {name: annotations_upstream/Subject 4/Fall.csv, size_bytes: 2399, sha256: d8cbc7f404dcf0cf674f18fa4c963a382aa64e7c93f2053194915bd0bdb5b4e5}
+hashes_unavailable_reason: null
+# Measured against the bytes (the paper's own counts are 79 fall + 81 ADL): 160 clips
+# on disk; the CSV row for S4 Fall 15 carries a fall label with no interval bracket, so
+# the index holds 159 = 78 fall + 81 ADL (summary.fall_unlabeled_excluded lists the clip).
+# Containers mix about 15 fps and about 29.9 fps cameras, so fps is per video and is
+# never assumed.
+counts: {videos: 160, videos_indexed: 159, falls: 78, adl: 81, subjects: 4}
+derived_from: []
+notes: >
+  Second interim fall training set, alongside caucafall, admitted 2026-08-27 after
+  the split verdict of fall v2 measured that the verifier needs positive-side angle,
+  subject and scene diversity (research/event-verifier-v1-record.md).
+  Version skew measured on landing: the Zenodo v2.0 zip, a git archive of commit
+  d3edb5d, ships interval-less `File Name,Length,Description` CSVs, while GitHub
+  commit 5abac769 (2024-08-21) rewrote exactly those 8 CSVs, and nothing else, into
+  the interval format, so the zip's videos are byte-identical to master's. The
+  interval CSVs are pinned at that commit under annotations_upstream/, which
+  vividly.data.convert.gmdcsa24 prefers over the zip's own CSVs; the module docstring
+  records every absorbed annotation defect (missing `to`, missing `]`, the
+  `Fall (FW)` label variant, one reversed context interval dropped, one unlabelled
+  fall excluded). videos/ holds relative symlinks into upstream/ with space-free
+  paths and keys such as S1_Fall__01; annotations/index.json carries events_t in
+  seconds. ur_fall and multicam_fall remain the untouched held-out exams, because a
+  dataset that trains loses its test role permanently.

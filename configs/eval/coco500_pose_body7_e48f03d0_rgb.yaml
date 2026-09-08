@@ -1,0 +1,59 @@
+# Joints lane diagnostic row, not part of the pre-declared 3-row ladder (2026-09-05).
+#
+#   uv run python scripts/pose/eval_pose_ladder.py \
+#       --config configs/eval/coco500_pose_body7_e48f03d0_rgb.yaml
+#
+# The body7 half of the colour-order diagnostic. Rationale in full in
+# configs/eval/coco500_pose_v2_6ba96285_noflip_rgb.yaml; in one line: rtmlib feeds every
+# RTMPose graph BGR while mmpose trained them on RGB, so both pose models in this ladder
+# are handicapped, and settling whether the v2 fine-tune actually loses on the deployed
+# path requires moving both of them to RGB, not just one.
+#
+# The `pose.color_order` key below is read only by scripts/pose/eval_pose_ladder.py, which
+# pops it before the pose backend is built. The stock scripts/eval/eval_runner.py forwards
+# every non-backend key as a keyword argument, and the pose backend does not accept this
+# one, so running this file through the stock runner raises TypeError rather than silently
+# scoring the BGR row.
+#
+# This row carries no `gate:` block. The gate on
+# configs/eval/coco500_pose_body7_e48f03d0.yaml pins the recorded 0.729, which is a BGR
+# number from the 2026-08-26 run; an RGB row is not that measurement and must not be
+# checked against it.
+#
+# **Provenance warning.** Eval-smoke provenance, not a Vividly accuracy claim. The pose
+# model here is body7-trained and ships nowhere; its lineage and both digests are recorded
+# on the joints lane page, final_models/joints/README.md.
+schema_version: 1
+run_name: coco500_pose_body7_e48f03d0_rgb
+
+dataset:
+  registry_name: coco
+  split: val
+  subset_file: configs/eval/subset_coco_val_person500.json
+
+detector:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.zip
+  input_size: [640, 640]
+  device: cpu
+  score_thr: 0.05
+  name: rtmdet-m-person-onnx
+  sha256: 4f4d7e07350b1753299111d1ae500fd64447a5b0e38e4bacbefab6573c742d30
+
+pose:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-body7-onnx
+  sha256: 5c0a4bf67953e6d2ac43ce15e77dc9d5d354ae18430a47d2c5963a7bc5683e3c
+  color_order: rgb                       # the one difference from ..._e48f03d0.yaml
+
+tracker: null
+
+conditions:
+  - name: clean
+    kind: passthrough
+
+logging:
+  out_root: outputs/eval

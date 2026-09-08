@@ -1,0 +1,45 @@
+# Interim convulsion verifier v1, a prototype weight under the interim event-model
+# carve-out in POLICY.md, rule 4. Target signature: rhythmic convulsion.
+#
+#   uv run python scripts/events/make_synth_convulsion.py --out outputs/events/synth_convulsion_v1 --seed 20260826 --n-pos 400 --n-neg-per-kind 70
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_verifier_v1.yaml
+#
+# Positives exist only as synthetic pose and track-space motion: this recipe predates
+# any real-data training in this lane, and POLICY.md, rule 4 bars acting a seizure out.
+# Negatives are the synthetic kinds plus every real Le2i track window force-labelled 0,
+# that is real tracker output of walking, sitting, falling and lying. None of it is a
+# convulsion, and a real fall as a convulsion negative is exactly the confusion the two
+# heads must not have. The verifier learns a motion signature, not a diagnosis; nothing
+# here is clinical detection performance.
+#
+# Window: seizure_candidate_v0 needs a sustained span (>= 8 s); 12 s of trailing
+# motion with >= 4 s of event overlap marks a positive.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/synth_convulsion_v1
+    event_keys: [convulsion_start_t, convulsion_end_t]
+  - dir: outputs/events/le2i_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+    force_label: 0        # real motion, none of it convulsive; falls stay negatives here
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v1

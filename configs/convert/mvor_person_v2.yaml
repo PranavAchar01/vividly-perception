@@ -1,0 +1,14 @@
+# MVOR -> v2 person COCO (local exam surface; EVAL_ONLY, never leaves this machine).
+#
+#   uv run python scripts/data/convert_mvor.py --config configs/convert/mvor_person_v2.yaml
+#
+# Produces annotations/mvor_person_v2_coco.json inside the mvor bucket: the local
+# CPU probe exam for the exported v2 person detector (real clinical-adjacent
+# multi-view OR footage, 2,196 images / 4,699 boxes). Image ids stay the released
+# structured ints (day/cam/frame traceability); person becomes category id 0
+# (v2 corpus law) so one eval path reads every surface.
+schema_version: 1
+dataset: mvor
+split: test
+out: annotations/mvor_person_v2_coco.json
+min_side_px: 2.0

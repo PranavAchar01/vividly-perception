@@ -1,0 +1,12 @@
+{
+  "lane": "fall",
+  "kind": "event_verifier",
+  "backend": "event_verifier",
+  "display_name": "Fall verifier v3",
+  "onnx": "model.onnx",
+  "onnx_sha256": "67954c04eeef301ff2ab3a1238a79dba2bfa397b3eba5a93a1d3102d7e00010e",
+  "checkpoint_sha256": "3d2d17eed74b735b4baef6e5f84eef1d9ed6f4c2b02f14ed072c7cbe9f221526",
+  "weight_class": "prototype",
+  "training_data": "881 windows, 190 positive and 691 negative, drawn from 282 videos of the public licence-reviewed acted-fall sets le2i_fdd, gmdcsa24 and caucafall and read as track and pose features, never as imagery.",
+  "backbone_pretrain": "None; the verifier is a small temporal convolutional network trained from random initialisation, so its upstream lineage is the lineage of the detector and pose models that produced its track trees."
+}

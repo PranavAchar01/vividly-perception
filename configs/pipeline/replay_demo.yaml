@@ -1,0 +1,168 @@
+# Vividly replay pipeline demo: the replay-mode runtime on the models of record.
+#
+#   uv run python scripts/run_pipeline.py --config configs/pipeline/replay_demo.yaml
+#   uv run python scripts/run_pipeline.py --config configs/pipeline/replay_demo.yaml --headless
+#
+# What this runs. The whole path: decode a clip, RT-DETRv4-S person boxes, BoT-SORT track
+# ids, RTMPose-m keypoints on the tracked boxes, TrackObservations into the TrackBook, the
+# two provisional rule heads (fall_then_still_v0 and seizure_candidate_v0) each confirmed by
+# its trained verifier, the SQLite alert store, and the review page on 127.0.0.1:8600. The
+# egress head is off here; configs/pipeline/egress_demo.yaml shows it.
+#
+# What it proves, and what it does not. It proves the wiring and produces the per-stage
+# latency table. It does not demonstrate the rules: the committed clip is 20 frames, and
+# every rule window is seconds to minutes long (the shortest, the 12 s convulsion window,
+# is far longer than the clip), so a correct run of this config fires nothing at all. The
+# rules demo is configs/pipeline/synthetic_demo.yaml. Point `source` at a longer licensed
+# clip to see both at once.
+#
+# Replay only. There is no capture path in this config. The source is a file somebody else
+# licensed; camera bring-up against a network video recorder is scripts/live_camera.py
+# (docs/LIVE_CAMERA.md).
+#
+# Demo material rule. tests/fixtures/sample_clip.mp4 is a slideshow of COCO val2017 images,
+# every one of them CC BY 2.0, itemised in tests/fixtures/ATTRIBUTION.md. Externally shown
+# demos use only cleanly licensed footage like this and the synthetic fixtures, and
+# evaluation-only footage never appears in demo material. See docs/PIPELINE.md.
+#
+# Models. Every graph below is a committed model of record under final_models/, stored with
+# Git LFS (run `git lfs pull` after cloning) and verified against the digest on its lane
+# page. All of them are prototype weights (POLICY.md, rule 4): internal demonstration only,
+# never quoted as clinical performance, and no number from this run is a product number.
+# Paths are repository-relative and the runner resolves them against the repository root.
+# The factory in src/vividly/models/factory.py is the only place a backend is named, so
+# swapping a weight is an edit to this file.
+schema_version: 1
+
+run_name: replay_demo
+
+# The dashboard is the point of this config, so it is not headless by default. Pass
+# --headless to get alerts.sqlite, latency.jsonl and the p50/p95 table with no server.
+headless: false
+
+# --- source -------------------------------------------------------------------
+source:
+  path: tests/fixtures/sample_clip.mp4
+  # Playback pacing, never an input to the rules: t_source is frame index / fps whatever
+  # this is set to. null runs as fast as the decoder allows (right for a headless timing
+  # run), 1.0 is wall clock (right for watching the page), 2.0 is double speed.
+  rate: null
+
+# --- perception ---------------------------------------------------------------
+# On macOS these run on device: cpu. The CoreML execution provider crashes on both
+# detector graphs in onnxruntime 1.28.0, so device: mps must never appear in a default
+# config.
+detector:
+  # eyes lane: RT-DETRv4-S person v2 seed 0, checkpoint 345c30a5, graph 40262049, AP
+  # 0.50:0.95 0.8356 on person_v2 dev-val (final_models/eyes/README.md). The backend owns
+  # its preprocessing: BGR to RGB, PIL bilinear resize to 640x640 with no letterbox, divide
+  # by 255, no mean or standard deviation. score_thr 0.3 is the threshold every extraction
+  # configuration in this repository uses.
+  backend: rtdetr_onnx
+  onnx: final_models/eyes/model.onnx
+  input_size: [640, 640]
+  device: cpu
+  score_thr: 0.3
+  name: rtdetrv4-s-person-v2-40262049
+
+pose:
+  # joints lane: RTMPose-m person v2 seed 0 epoch 38, checkpoint a0a035fe, graph 6ba96285,
+  # keypoint AP 0.774115 on COCO val2017 with ground-truth boxes
+  # (final_models/joints/README.md). input_size is (width, height). The backend hands the
+  # graph the OpenCV BGR frame; the runner's colour-order key is deliberately absent from
+  # every shipped pipeline config, and a coupling test under tests/ keeps it that way.
+  backend: rtmlib
+  onnx: final_models/joints/model.onnx
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-person-v2-6ba96285
+
+tracker:
+  # The shipped tracker, adopted in the 2026-08-31 review recorded in
+  # research/v2-training-stack.md section 7a: BoT-SORT from roboflow `trackers` 2.6.0,
+  # Apache-2.0. The ByteTrack port it replaces has no low-score floor in its second
+  # association pass and measurably drags a motionless occluded person's track, 515.6 px
+  # in that review's probe; `backend: bytetrack` stays registered as the frozen baseline.
+  # Never sv.ByteTrack, removed in supervision 0.31.0, and never boxmot, which is AGPL and
+  # barred by POLICY.md, rule 5.
+  backend: botsort
+  track_activation_threshold: 0.25
+  # Counted in 30 fps frames: seconds equal the value divided by 30 regardless of
+  # frame_rate, which is the library's own convention. 1800 gives 60 s of identity memory;
+  # the library default of 30 gives one second, which loses every still patient.
+  lost_track_buffer: 1800
+  # Detections below this never reach the tracker, a defence over the port's own 0.1
+  # low-pass floor, and the seam that cuts the detector's 300-box tail.
+  score_floor: 0.1
+  # The OC-SORT stationary fix: process-noise velocity block times 0.01, the mechanism
+  # behind its measured 3.5x lower drift on motionless people. 1.0 disables it.
+  velocity_damping: 0.01
+  # Must match the ingest rate. The committed clip is 15 fps, which is also the waiting
+  # room number the rest of this repo assumes.
+  frame_rate: 15
+
+# --- track layer --------------------------------------------------------------
+# Every value here is PROVISIONAL (the acute-event rule set, POLICY.md;
+# docs/CALIBRATION.md); these are the shipped placeholders, restated so a run of this config
+# records what it used.
+tracks:
+  baseline_window_s: 300.0
+  reap_after_s: 30.0
+  kp_conf_min: 0.3
+  # Ring sizing, not a threshold: 300 s of history at 15 fps covers the longest rule window
+  # in the acute-event set, collapse_search_s at 120 s, with headroom, so no rule's evidence
+  # is silently truncated.
+  fps: 15.0
+  ring_window_s: 300.0
+  baseline_min_samples: 30
+
+# --- rule thresholds ----------------------------------------------------------
+# Loaded from the shared file rather than restated inline, so there is exactly one place a
+# threshold lives and one place the PROVISIONAL warning has to be read. `rules:` and
+# `rules_config:` are mutually exclusive; the runner refuses a config that sets both.
+rules_config: configs/pipeline/rules.yaml
+
+# --- event verification -------------------------------------------------------
+# The two verifier heads are the models of record, loaded from their lane directories:
+# report.json carries the window geometry and the calibration temperature, and model.onnx
+# is refused unless it hashes to the digest the report records. The thresholds are the
+# operating points the lane pages record, fitted on the surfaces each page states, and
+# every one is PROVISIONAL until the calibration protocol in docs/CALIBRATION.md has its
+# preconditions met. Quote no number without the graph digest beside it. Delete or comment
+# this block to run the demo without a verifier.
+verify:
+  policy: annotate
+  heads:
+    seizure_candidate_v0:
+      # convulsion_v2_real, checkpoint 715d172c, graph 07c399be, temperature 2.377.
+      # final_models/seizure/README.md: 0.5 catches 12 of 13 events with 72.4 percent of
+      # quiet footage in alarm; 0.8 catches 8 of 13 at 33.2 percent; 0.9 leaves 8.1
+      # percent in alarm.
+      run_dir: final_models/seizure
+      confirm_threshold: 0.8
+    fall_then_still_v0:
+      # fall_v3, checkpoint 3d2d17ee, graph 67954c04, temperature 1.0251.
+      # final_models/fall/README.md: at 0.95 the head keeps 111 of 200 all-camera catches
+      # with chute24 at 7.3 episodes per hour and 2.8 percent in alarm, and its quiet
+      # range on the UR activities of daily living recordings starts at 0.95, not 0.9.
+      run_dir: final_models/fall
+      confirm_threshold: 0.95
+
+# --- outputs ------------------------------------------------------------------
+output:
+  # A run writes <dir>/<run_name>/alerts.sqlite and <dir>/<run_name>/latency.jsonl.
+  dir: outputs/pipeline
+
+# --- dashboard ----------------------------------------------------------------
+dashboard:
+  # Loopback only. Nothing in this phase binds a routable interface, and POLICY.md, rule 7
+  # says no component may assume cloud connectivity at inference time.
+  host: 127.0.0.1
+  port: 8600
+  # Socket pushes per second. This is a review surface, not a video wall: 4 Hz keeps the
+  # timers and the alert feed live without spending the run's time on JPEG encoding.
+  stream_hz: 4.0
+  alert_limit: 25
+  # JPEG quality for the frame on the page. Lower is cheaper; this is display only and
+  # never touches what the models see.
+  jpeg_quality: 70

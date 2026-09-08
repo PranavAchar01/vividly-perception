@@ -1,0 +1,26 @@
+# Fall verifier v2 against the UR Fall held-out test extraction. The set is held out
+# entirely and trains nothing, per POLICY.md, rule 4 and section 5.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_urfall_fallv2.yaml
+#
+# The window below must equal the window the fall v2 arm was trained under, 8.0 s span at a
+# 1.5 s stride over 64 steps under the contain policy: the graph's input geometry pins n_steps
+# and the time scale pins window_s. That training configuration is not carried in this
+# repository, because its negative diet came from the quarantined overhead ward corpora
+# that rule 1 of POLICY.md bars from any training manifest; the arm itself is recorded in
+# research/event-verifier-v1-record.md.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/ur_fall_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v2/verifier.onnx
+out_dir: outputs/verifier/fall_v2/eval_ur_fall

@@ -1,0 +1,15 @@
+diff --git a/engine/rtv4/hybrid_encoder.py b/engine/rtv4/hybrid_encoder.py
+index 4f3bc16..1cd52a7 100644
+--- a/engine/rtv4/hybrid_encoder.py
++++ b/engine/rtv4/hybrid_encoder.py
+@@ -388,8 +388,8 @@ class HybridEncoder(nn.Module):
+                 pos_embed = self.build_2d_sincos_position_embedding(
+                     self.eval_spatial_size[1] // stride, self.eval_spatial_size[0] // stride,
+                     self.hidden_dim, self.pe_temperature)
+-                setattr(self, f'pos_embed{idx}', pos_embed)
+-                # self.register_buffer(f'pos_embed{idx}', pos_embed)
++                # persistent=False: moves with .to(device), absent from state_dict
++                self.register_buffer(f'pos_embed{idx}', pos_embed, persistent=False)
+ 
+     @staticmethod
+     def build_2d_sincos_position_embedding(w, h, embed_dim=256, temperature=10000., device=None):

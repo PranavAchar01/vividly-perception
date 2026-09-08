@@ -1,0 +1,194 @@
+# Vividly rule thresholds: the acute-event rule set, stated in POLICY.md, dated 2026-08-19.
+#
+# Read this before changing a number.
+#
+# Every value in this file is PROVISIONAL. Not one of them has been fitted to data, and
+# none of them can be until shadow-mode data from a pilot site exists. Fine-tuned weights
+# for the lanes that feed these rules are measured and recorded under final_models/, so the
+# first of the four activation preconditions in docs/CALIBRATION.md section 2 is met and the
+# pilot-side ones are not. The replay-mode structure was held to that discipline first and
+# the acute-event rule set carries it unchanged into the event rules: thresholds stay
+# provisional until pilot shadow-mode data replaces them.
+#
+# The reasons are stacked three deep, and any one of them is sufficient:
+#   1. Standing policy says so, and the acute-event rule set re-affirms it.
+#   2. Every rule input comes from a perception stack that has already changed generation
+#      once, from stock zoo weights to the models of record under final_models/. A threshold
+#      fitted on top of one estimator fits that estimator's error rather than the behaviour,
+#      and does not carry across a change of graph.
+#   3. No number below has ever been compared against a real event. Under the acute-event
+#      rule set the priority is avoiding false positives, which is exactly the property
+#      that cannot be tuned without shadow-mode data.
+#
+# So: do not quote any number below as a product number, do not put one in a deck, and do
+# not read a firing count from any run against these values as a false-alarm rate. The
+# protocol that eventually replaces them, including the four preconditions it needs before
+# step 1 can even start, is docs/CALIBRATION.md. The replay-mode stance around it is
+# docs/PIPELINE.md.
+#
+# The verifier confirm thresholds do not live here, because RuleConfig rejects unknown
+# keys: they are per-head `verify.heads.<rule_id>.confirm_threshold` in the pipeline config.
+# Measured PROVISIONAL candidates, with the fitting surface and onnx sha8 each number
+# is tied to, are in research/operating-points.md (2026-09-05).
+#
+# Units: seconds unless a name says otherwise. Pixel thresholds are pixels on the source
+# frame, so they are resolution and mount dependent and do not travel between sites.
+# Loaded by vividly.rules.load_rule_config; the values here are pinned equal to the
+# RuleConfig defaults in src/vividly/rules/base.py by tests/test_rules.py.
+
+rules:
+  # --- engine ---------------------------------------------------------------
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # One (rule_id, track_id) pair fires at most once per this many seconds. The value is an
+  # estimate: long enough that one event does not fill the queue, short enough that a nurse
+  # who dismissed one is told again. Note that fall_then_still_v0 alerts on the event, not
+  # the state: once the fall evidence ages out of collapse_search_s a person still on the
+  # ground does not re-alert, so this debounce is a repeat guard, not the only guard. The
+  # alerts-per-nurse-per-shift ceiling that decides this properly is an input to calibration
+  # step 2 and is fixed before any sweep, not tuned afterwards.
+  refire_after_s: 900.0
+
+  # Off at 0.0, and PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md)
+  # if ever turned on: a second, coarser debounce keyed on the rule alone, so that rule
+  # alerts at most once per this many seconds no matter which track fires it. The replay
+  # pipeline opens one source per process, so rule scope is camera scope; this is the live
+  # form of the camera-level episode merge the decision-layer instrument reports,
+  # research/operating-points.md, section 5, item 2 (per-camera episode merge). The
+  # measured saving at the recommended operating points is real but modest: the seizure
+  # model of record, onnx sha8 07c399be, at 0.8 goes from 54.4 to 32.6 episodes per
+  # negative-recording hour on the 0.184 h of E2 negatives, while the out-of-fold and fall
+  # surfaces save close to nothing. It therefore stays off until pilot shadow data says a
+  # nurse needs it. 0.0 leaves the per-rule, per-track debounce above as the only guard,
+  # which is the shipped behaviour.
+  camera_refire_after_s: 0.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md), a behaviour
+  # choice and not a fitted threshold: minimum source-time gap between evaluation passes.
+  # The pipeline ticks once per frame at 15 fps and every confirmation window is tens of
+  # seconds long, so re-deciding 15 times a second costs a lot and changes nothing. Onset
+  # accuracy does not depend on this: onsets are recovered from stored history, not from
+  # tick timing.
+  eval_every_s: 1.0
+
+  # --- fall_then_still_v0 -----------------------------------------------------
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How far back the evidence scan may look, and therefore the oldest a fall may be and
+  # still produce an alert. Must cover fall_max_s + down_still_min_s + down_stale_s
+  # (RuleConfig raises otherwise). Note that TrackConfig ring sizing must cover this window
+  # or the evidence is silently truncated.
+  collapse_search_s: 120.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Torso angle (degrees from vertical) at or below which a person counts as upright before
+  # the fall. The cascade requires an upright sample inside the search window: a person who
+  # entered the frame already on the ground, or slid down over minutes, produces no fall
+  # transition and the rule abstains, which puts precision first.
+  fall_upright_max_deg: 30.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Torso angle at or above which a person counts as down. The down-phase span is the
+  # contiguous run of samples at or above this angle. It has to clear RTMPose jitter on
+  # degraded perspective and top-view footage, and that jitter has never been measured on
+  # this camera geometry, at this compression, with these weights.
+  fall_down_min_deg: 60.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The upright-to-down transition must complete within this many seconds. This is the gate
+  # that separates a fall from a slow slump: a transition longer than this is not an acute
+  # event and must not alert here.
+  fall_max_s: 3.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The box centre must move down the image by at least this many pixels across the
+  # transition. Guards against pose-noise angle flips with no actual body displacement.
+  # Pixels on the source frame: resolution and mount dependent, the clearest example in this
+  # file of a per-site number wearing the costume of a constant.
+  fall_drop_min_px: 40.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How long the person must stay both down and still after the fall before the cascade
+  # fires. This is the confirmation stage, a fall alone never alerts, and it is the
+  # acute-event false-positive stance expressed in one number: detection latency is spent to
+  # buy precision.
+  down_still_min_s: 30.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Mean per-step centre displacement, in pixels, at or below which the down phase counts as
+  # still. Above it the rule abstains: a person moving on the ground is not down-and-still
+  # (rhythmic movement on the ground is seizure_candidate_v0's job).
+  down_move_max_px: 6.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Minimum posture samples inside the down span before it counts. At 15 fps a 30 s span
+  # holds 450 of them, so this only bites when pose confidence has been dropping out for
+  # most of the span, which is exactly when the evidence is too thin to act on.
+  down_min_samples: 15
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The newest posture sample may not be older than this, and the down span may not bridge a
+  # posture blackout longer than this. Down-and-still is a claim about right now, and stale
+  # evidence does not support it. A crowd gathering around the person breaks the evidence
+  # chain and the rule goes silent rather than guessing through the occlusion.
+  down_stale_s: 5.0
+
+  # --- seizure_candidate_v0 ---------------------------------------------------
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The window convulsive motion is measured over.
+  convulse_window_s: 12.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The oscillation must span at least this many seconds inside the window. Tonic-clonic
+  # convulsions run tens of seconds; a two-second shudder, a dropped bag, a chair scrape
+  # must not alert.
+  convulse_min_s: 8.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Fraction of consecutive step pairs whose directions reverse (negative dot product).
+  # Rhythmic convulsion reverses nearly every step; walking and seated fidgeting almost
+  # never do. This is the signature the rule binds on, because amplitude alone is a person
+  # shifting in a chair.
+  convulse_reversal_frac: 0.6
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Mean per-step centre displacement, in pixels, below which the motion is jitter rather
+  # than convulsion and the rule abstains. What keeps sub-pixel tracker noise (which
+  # reverses constantly, at no amplitude) silent.
+  convulse_amp_min_px: 3.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Minimum position samples inside the window.
+  convulse_min_samples: 20
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The newest position sample may not be older than this. Convulsion is a claim about right
+  # now, and stale evidence does not support it.
+  convulse_stale_s: 2.0
+
+  # --- egress_without_discharge_v0 (vividly.rules.egress) -----------------------
+  # The third acute-event head is a state machine over identity, not a motion rule: a
+  # person who left through a configured exit zone, stayed away, was not tagged discharged
+  # and was not confirmed by a reviewer to have come back. The zones themselves are per-site
+  # geometry and live in the pipeline config's `egress:` block, never here.
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How long the person must stay away after leaving through an exit zone before the
+  # candidate fires. This is the leaves-for-longer-than-N-minutes condition from the product
+  # description, and N is a placeholder until shadow-mode data exists. It must exceed the
+  # track layer's reap_after_s by a wide margin, because a departure is only noticed at reap
+  # time.
+  egress_absent_min_s: 600.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How long the person must have been present before their exit counts as a patient
+  # leaving. A walk-through is not an egress.
+  egress_min_presence_s: 120.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How far back along the track's own history, measured from its last sighting, an
+  # exit-zone sample may lie for the departure to count as passing through the exit. It
+  # absorbs a frame or two of tracker noise at the door; a person lost in the middle of the
+  # room is an occlusion, not an exit, and never alerts.
+  egress_exit_window_s: 5.0

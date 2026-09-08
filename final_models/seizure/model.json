@@ -1,0 +1,12 @@
+{
+  "lane": "seizure",
+  "kind": "event_verifier",
+  "backend": "event_verifier",
+  "display_name": "Convulsion verifier v2 real",
+  "onnx": "model.onnx",
+  "onnx_sha256": "07c399be24f89a44670262ea75879cc67f60f46c5cd52e5d2cc4218e914b7e22",
+  "checkpoint_sha256": "715d172c9fd8523c3da43faba34644762f847b8a9d3eaa9dc293efe7dda1830b",
+  "weight_class": "prototype",
+  "training_data": "1,106 windows, 164 positive and 942 negative, drawn from 8 videos of WU-SAHZU patients pat01, pat02, pat05 and pat13 and read as track and pose features, never as imagery.",
+  "backbone_pretrain": "None; the verifier is a small temporal convolutional network trained from random initialisation, so its upstream lineage is the lineage of the detector and pose models that produced its track trees."
+}

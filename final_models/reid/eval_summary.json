@@ -1,0 +1,115 @@
+{
+  "artefact": "reid-mevid-a1",
+  "schema_version": 1,
+  "finished_utc": "2026-09-07T17:15:40Z",
+  "config": "configs/reid/train_mevid_a1.yaml",
+  "weight_class": "prototype",
+  "seed": 20260907,
+  "epochs": 30,
+  "recipe": {
+    "loss": "softmax",
+    "batch_train": 32,
+    "num_instances": 4,
+    "seq_len": 8,
+    "sample_method": "random",
+    "test_sample_method": "evenly",
+    "lr": 0.0015,
+    "weight_decay": 0.0005,
+    "fixbase_epoch": 5,
+    "open_layers": [
+      "classifier"
+    ],
+    "lr_scheduler": "single_step",
+    "stepsize": 20,
+    "gamma": 0.1,
+    "margin": 0.3,
+    "weight_t": 1.0,
+    "weight_x": 1.0,
+    "label_smooth": true,
+    "pooling_method": "avg"
+  },
+  "torch": "2.11.0+cu128",
+  "torchreid": "1.4.0",
+  "num_train_pids": 104,
+  "imagenet_init": {
+    "path": "/root/.cache/torch/checkpoints/osnet_x1_0_imagenet.pth",
+    "sha256": "fe2d63f9157c28a4a8d8ca29bec12d5b2988ac0346d712025789ea9174968e79"
+  },
+  "best": {
+    "map": 0.20478233695030212,
+    "epoch": 30
+  },
+  "protocols": {
+    "general": {
+      "label": "general protocol (torchreid standard: euclidean, raw features)",
+      "note": "",
+      "mAP": 0.20478236745828646,
+      "rank1": 0.49050632911392406,
+      "rank5": 0.6170886075949367,
+      "rank10": 0.7088607594936709,
+      "queries_scored": 316,
+      "torchreid_map": 0.20478233695030212,
+      "torchreid_rank1": 0.4905063211917877,
+      "selfcheck_map_delta": 3.050798433323898e-08
+    },
+    "l2_cosine": {
+      "label": "L2-normalised cosine baseline (no debias)",
+      "note": "the comparison point for camera-debias; same protocol, different metric",
+      "mAP": 0.2382701574923853,
+      "rank1": 0.49050632911392406,
+      "rank5": 0.6424050632911392,
+      "rank10": 0.6962025316455697,
+      "queries_scored": 316
+    },
+    "camera_debias": {
+      "label": "camera-debiased (per-camera mean subtracted, L2-renormalised, cosine)",
+      "note": "11 cameras; singleton cameras (mean == the feature): [301]",
+      "mAP": 0.3489494731258008,
+      "rank1": 0.5284810126582279,
+      "rank5": 0.7373417721518988,
+      "rank10": 0.7658227848101266,
+      "queries_scored": 316,
+      "camera_counts": {
+        "301": 1,
+        "329": 66,
+        "330": 24,
+        "336": 365,
+        "340": 50,
+        "436": 185,
+        "505": 34,
+        "507": 553,
+        "508": 34,
+        "509": 148,
+        "639": 294
+      },
+      "singleton_cameras": [
+        301
+      ]
+    },
+    "sc_approx": {
+      "label": "SC-approx protocol (in-house definition), NOT the paper protocol",
+      "note": "positives are same (pid AND outfit_id); same-pid different-outfit gallery tracklets are REMOVED as junk, not scored as negatives. Do not compare this number to any published MEVID same-clothes result.",
+      "mAP": 0.29309105936992974,
+      "rank1": 0.5173611111111112,
+      "rank5": 0.65625,
+      "rank10": 0.7534722222222222,
+      "queries_scored": 288
+    }
+  },
+  "onnx": {
+    "path": "outputs/reid_mevid_a1/osnet_x1_0_mevid_a1.onnx",
+    "sha256": "60164a9945445efbc5ea3d2abafb3fe0d78f1bcd2b4616ffd47634d87ef808a7",
+    "bytes": 8729490,
+    "opset": 17,
+    "embedding_dim": 512,
+    "parity_cosine_min": 1.0,
+    "exported_from": {
+      "checkpoint": "outputs/reid_mevid_a1/model/model-best.pth.tar",
+      "checkpoint_sha256": "66623239b93fc7a807b986b07fd2fcb2047ccf1e77d1988d96ba2575b8390bb7",
+      "checkpoint_epoch": 30,
+      "exported_utc": "2026-09-07T17:21:33Z",
+      "note": "Exported after the run by the trainer's export_onnx from model-best.pth.tar, the epoch-30 weights the protocol tables were measured on. The in-process export at the end of training failed because the pod venv lacked the onnx package (torch.onnx.OnnxExporterError); training, evaluation and the summary had completed."
+    }
+  },
+  "caveat": "Prototype weights (POLICY.md, rule 6). Internal only; never quoted as clinical performance; SC-approx is an in-house protocol and is not comparable to any published MEVID same-clothes number."
+}

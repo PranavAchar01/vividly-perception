@@ -1,0 +1,20 @@
+# fall_v2pose b66c3a0a, the head that holds the all-cameras bar of 0.78474
+# (final_models/fall/README.md), re-scored with its weights untouched on the v2c UR Fall
+# tree.
+# One pre-declared look per research/fall-push-v3-protocol.md, on the v2c tree.
+# window: must equal the fall trainers' geometry (8.0 s contain, n_steps 64).
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/ur_fall_tracks_v2c
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v2pose/verifier.onnx
+out_dir: outputs/verifier/fall_v2pose_reslice_v2c/eval_ur_fall

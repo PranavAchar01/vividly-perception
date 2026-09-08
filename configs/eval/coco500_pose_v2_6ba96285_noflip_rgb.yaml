@@ -1,0 +1,71 @@
+# Joints lane diagnostic row, not part of the pre-declared 3-row ladder (2026-09-05).
+#
+#   uv run python scripts/pose/eval_pose_ladder.py \
+#       --config configs/eval/coco500_pose_v2_6ba96285_noflip_rgb.yaml
+#
+# Why it was added, after the fact and labelled as such. Rows 1 to 3 of the ladder put the
+# v2 pose model of record below the body7 eval-smoke model on the deployed path, which
+# inverts the trainer-side order (0.774115 against 0.764499). Before that is read as a
+# failure of the fine-tune to transfer, one confound has to be measured rather than
+# argued about:
+#
+#   rtmlib's pose preprocessing never converts colour. It affine-crops the cv2 image
+#   (BGR), normalises with the ImageNet mean/std, and feeds that. mmpose's RTMPose
+#   `data_preprocessor` is `bgr_to_rgb=True`, and neither ONNX graph carries the swap:
+#   `scripts/pose/export_rtmpose_onnx.py` wraps `extract_feat` and `head`, which sit after
+#   the preprocessor. So the deployed path feeds every RTMPose graph channel-swapped
+#   input.
+#
+# Measured before this config was written (30 subset images, detector boxes at thr 0.5,
+# mean keypoint confidence): v2 `6ba96285` BGR 0.6763 to RGB 0.6902 (+0.0140); body7
+# `5c0a4bf6` BGR 0.6672 to RGB 0.6731 (+0.0058). Both models want RGB; the v2 model wants
+# it about 2.4x more. This row turns that into an AP.
+#
+# It is a diagnostic, not a rival row: `pose.color_order: rgb` is a runner-side knob that
+# scripts/pose/eval_pose_ladder.py pops before the pose backend is built. The stock
+# scripts/eval/eval_runner.py forwards every non-backend key as a keyword argument and the
+# pose backend does not accept this one, so running this file through the stock runner
+# raises TypeError rather than silently scoring the BGR row. Nothing in the shipped
+# pipeline converts colour today. Its number describes what the model could do if the
+# deployed preprocessing were fixed; it does not describe what the deployed path does now.
+#
+# Note: the ONNX is committed at final_models/joints/model.onnx (54,369,587 bytes), whose
+# digest is the one pinned below. It is a Git LFS object, so run `git lfs pull` on a fresh
+# clone before this row.
+schema_version: 1
+run_name: coco500_pose_v2_6ba96285_noflip_rgb
+
+dataset:
+  registry_name: coco
+  split: val
+  subset_file: configs/eval/subset_coco_val_person500.json
+
+detector:
+  # Unchanged from every other row, and still fed BGR: the detector's own preprocessing
+  # convention is not what this row is testing, and changing two things at once would
+  # make the delta unreadable.
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.zip
+  input_size: [640, 640]
+  device: cpu
+  score_thr: 0.05
+  name: rtmdet-m-person-onnx
+  sha256: 4f4d7e07350b1753299111d1ae500fd64447a5b0e38e4bacbefab6573c742d30
+
+pose:
+  backend: rtmlib
+  onnx: final_models/joints/model.onnx
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-person-v2-onnx-6ba96285
+  sha256: 6ba9628506a8899d3a3e940dcc8af5d30342921f09d2605afa505b57453d3527
+  color_order: rgb                       # the one difference from ..._noflip.yaml
+
+tracker: null
+
+conditions:
+  - name: clean
+    kind: passthrough
+
+logging:
+  out_root: outputs/eval

@@ -1,0 +1,98 @@
+schema_version: 1
+name: le2i_fdd
+display_name: Fall Detection Dataset (Le2i / ImViA)
+task: [detection]
+bucket: TRAIN_PROTOTYPE
+status: available
+licensing:
+  license: CC BY-NC-SA 3.0 (per the dat@UBFC record)
+  license_url: https://search-data.ubfc.fr/imvia/FR-13002091000019-2024-04-09_Fall-Detection-Dataset.html
+  license_verbatim: >
+    Dataset Licence : CC BY-NC-SA. doi:10.25666/DATAUBFC-2024-04-09. (The record links
+    the Attribution-NonCommercial-ShareAlike 3.0 deed.)
+  license_conflict_note: >
+    A non-commercial licence against interim prototype training inside a for-profit is
+    unresolved (CQ-22). The trained weights are prototype-class, for internal
+    demonstration only, never deployed commercially without counsel, and slated for full
+    retraining on clinical-pilot data (CQ-21), so the interim lineage is designed to be
+    discarded. Whether share-alike reaches model weights is also CQ-22. The owner
+    proceeded on 2026-08-26 under the recorded interim event grant.
+  commercial_use: conflicting
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-22-acted-fall-dataset-licenses]
+  counsel_cleared_utc: "2026-08-26"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-26T07:00:00Z"
+    method: >
+      open http download from dat@UBFC (dl_data.php, no click-through); licence named on
+      the record page; accepted by the owner for interim training use
+    evidence_path: null
+  prototype_grant:
+    decision: interim-event-models
+    decided_utc: "2026-08-26"
+    decided_by: owner
+    attribution: >
+      Fall Detection Dataset (Le2i / ImViA, Universite de Bourgogne; Charfi et al.),
+      doi:10.25666/DATAUBFC-2024-04-09
+    ship_policy: >
+      trains interim prototype event verifiers only; nothing trained on this data is
+      deployed commercially or externally distributed without counsel sign-off (CQ-22)
+  event_grant:
+    decision: interim-event-models
+    decided_utc: "2026-08-26"
+    decided_by: owner
+    role: train_interim
+provenance:
+  collector: Imen Charfi, Johel Miteran, Julien Dubois (Le2i / ImViA, U. Bourgogne)
+  imagery_source: >
+    actors performing staged falls (forward falls, balance loss, falls from sitting) and
+    daily activities in four locations (Home, Coffee room, Office, Lecture room); single
+    RGB camera, 320x240, per-video container fps of either 24.0003 or 25.0; measured on
+    landing at 190 videos, of which 130 carry annotation files with per-frame body
+    bounding boxes and fall ground truth
+  contains_real_people: true
+  simulated_medical_events: true
+  citation: >
+    I. Charfi, J. Miteran, J. Dubois, M. Atri, R. Tourki, "Optimized spatio-temporal
+    descriptors for real-time fall detection: comparison of SVM and Adaboost-based
+    classification", Journal of Electronic Imaging 22(4), 041106 (2013).
+    doi:10.25666/DATAUBFC-2024-04-09.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://search-data.ubfc.fr/imvia/FR-13002091000019-2024-04-09_Fall-Detection-Dataset.html
+    - https://search-data.ubfc.fr/imvia/dl_data.php?file=101
+  human_steps: []
+layout:
+  root: data/train_prototype/le2i_fdd
+  # val is the full set, so it is contaminated for any weight trained on this data.
+  # Verifier test numbers come from ur_fall and multicam_fall, never from here.
+  images: {train: videos, val: videos}
+  annotations: {train: annotations, val: annotations}
+ann_format: le2i_annotation_txt
+converter: vividly.data.convert.le2i
+files:
+  - {name: upstream/FallDataset.zip, size_bytes: 9608701260, sha256: 01df91e32a034d9897d1f9cd5e0211c70ab54289d27e8490db5a699384c17fc8}
+hashes_unavailable_reason: null
+# Measured against the bytes (the record page's figure of 191 videos and 143 falls does
+# not match this distribution): 190 videos; Lecture_room (27) and Office (33) ship no
+# annotation files, so the usable pool is 130 annotated videos = 99 fall + 31 no-fall.
+counts: {videos: 190, videos_annotated: 130, falls: 99, no_fall: 31}
+derived_from: []
+notes: >
+  Interim training set for the fall verifier (event_grant.role train_interim), and the
+  first fall set admitted for training, alongside caucafall and gmdcsa24; ur_fall and
+  multicam_fall stay held-out tests. The 8.95 GiB FallDataset.zip from dat@UBFC lands
+  under upstream/ as a zip of six location zips;
+  videos/<Location>/video_NNN.avi and annotations/<Location>/video_NNN.txt are
+  materialised from it, together with annotations/index.json through
+  vividly.data.convert.le2i.write_index. The distribution's irregularities are recorded
+  in that module's docstring: per-video container fps mixes 24.0003 and 25.0, so time
+  alignment must use each video's own fps; three files have the fall-interval header
+  spliced mid-file; one file has reversed box corners; 13 files have more annotation rows
+  than frames. Per-frame bounding boxes ride along and are usable as extra
+  detector-domain evidence, but the primary role of this set is fall-interval ground
+  truth for verifier training clips.

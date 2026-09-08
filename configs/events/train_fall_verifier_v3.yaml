@@ -1,0 +1,63 @@
+# Interim fall verifier v3, pre-declared recipe (2026-08-27, committed before
+# any training or evaluation ran; anti-overfitting protocol).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_verifier_v3.yaml
+#
+# One change from train_fall_verifier_v1.yaml, and nothing else: positive-side
+# diversity. Two further interim acted-fall sets join le2i, namely gmdcsa24
+# (78 falls + 81 ADLs, 4 subjects, a webcam at camera heights 70 to 90 cm, giving
+# low and eye-level angles with no overhead views, day and night) and
+# caucafall (50 falls + 50 ADLs, 10 subjects, upper-corner high-angle camera, the
+# closest licensed public angle to an elevated view). Their ADL clips carry no
+# events, so every ADL window trains as label 0, supplying the quiet-footage
+# negatives added on 2026-08-27 in the same rooms and angles as the new positives.
+#
+# Deliberately not stacked on v2's negative diet, which came from the overhead
+# corpora that POLICY.md, rule 1 bars from any training manifest: fall v2's
+# split verdict measured that diet teaching overhead-angle falls into the
+# negative class (multicam catches at threshold 0.5 fell from 21 to 15, with maxima of
+# 0.02 to 0.08 on the overhead-like cameras) while UR Fall improved. v3 isolates the
+# positive-diversity lever against v1's baseline; a future v4 may recombine winners. All
+# extractions use the same stock eyes (235e8209) as le2i's.
+#
+# Window geometry, architecture, calibration instrument (bounded grid plus the
+# degenerate-fit fallback, permanent since v2), train hyperparameters and seed are
+# identical to v1 and v2, so the delta is attributable to the data alone.
+#
+# Exam protocol: one held-out look each on ur_fall and multicam
+# (eval_fall_urfall_fallv3.yaml, eval_fall_multicam_fallv3.yaml) after
+# training completes; no variant selection on test. Recorded baselines:
+#   fall v1 080b5d86: ur_fall window / video AUC 0.957 / 0.931, multicam
+#     window / video AUC 0.821 / 0.826, multicam catches (21, 1 FP) @0.5
+#   fall v2 e9cebe4d: ur_fall window / video AUC 1.000 / 1.000, multicam
+#     catches (15, 0 FP) @0.5 (recall regression, the diet lesson above)
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu          # tiny model; keep off the busy GPUs
+out_dir: outputs/verifier/fall_v3

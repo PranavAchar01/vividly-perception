@@ -1,0 +1,47 @@
+# Zero-shot dev-val grading of the unchanged COCO base checkpoint (Model A baseline).
+#
+# The fine-tune verdict needs a comparison against the base model on the same surface.
+# This config runs the published deim_dfine_s_coco.pth (80-class heads intact) over the
+# v2 dev-val with the same val transforms and evaluator as the fine-tune config, so
+# the AP lands in the same column as every per-epoch number in train_seed0.log.
+#
+# The number it produced: AP 0.584, with AP-small 0.003 and AR-small 0.035, on
+# checkpoint a089c9eb, recorded in research/eyes-noise-floor.md and in the baseline
+# row of final_models/eyes/README.md.
+#
+# Every path below is the pod layout described in TRAINING.md, not a repository path.
+# No script installs this file into the trainer tree: the operator copies it into
+# <DEIM>/configs/deim_dfine/ before the command below resolves.
+#
+#   python train.py -c configs/deim_dfine/deim_s_person_v2_zeroshot_eval.yml \
+#       --test-only -r /workspace/ckpt/deim_dfine_s_coco.pth
+#
+# Deltas from the published COCO recipe, each with its reason:
+#   num_classes: inherited 80; the checkpoint's class heads load intact and a
+#       1-class override would re-init them and grade random heads.
+#   remap_mscoco_category True -> False
+#       with remap off the postprocessor emits raw contiguous labels, so the
+#       model's person index 0 matches the GT category_id 0 (v2 corpus rule).
+#       The other 79 labels never match a GT category and the evaluator only
+#       scores categories present in the GT file, so person-AP stays clean.
+#   val_dataloader -> /workspace/data/person_v2 dev-val (identical to the
+#       fine-tune config's val block, num_workers 8, bs 64).
+#   output_dir -> its own directory so no training artifact is ever touched.
+__include__: ['./deim_hgnetv2_s_coco.yml']
+
+output_dir: /workspace/outputs/deim_s_person_v2_zeroshot_eval
+
+remap_mscoco_category: False
+
+# The published ckpt carries only a 'model' key, and _solver.eval() constructs the
+# EMA copy before load_resume_state fills components by key; with use_ema on,
+# val() would grade the EMA's construction-time (random-init-copy) weights, not
+# the checkpoint (verified against engine/solver/_solver.py at pin 09d35d5).
+use_ema: False
+
+val_dataloader:
+  num_workers: 8
+  dataset:
+    img_folder: /workspace/data/person_v2/frames/train
+    ann_file: /workspace/data/person_v2/annotations/person_v2_devval.json
+  total_batch_size: 64

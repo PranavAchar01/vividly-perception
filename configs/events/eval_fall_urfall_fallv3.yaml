@@ -1,0 +1,25 @@
+# Fall verifier v3 against the UR Fall held-out test extraction, an acted-event test
+# set held under POLICY.md, rule 4, taking the single pre-declared test look for this exam
+# under the measurement discipline in POLICY.md, section 5.
+# The graph is the committed lane weight final_models/fall/model.onnx; its digest is in
+# final_models/fall/model.onnx.sha256 and its provenance is on final_models/fall/README.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_urfall_fallv3.yaml
+#
+# window: must equal configs/events/train_fall_verifier_v3.yaml's window; the graph's
+# input geometry pins n_steps and the time scale pins window_s.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/ur_fall_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: final_models/fall/model.onnx
+out_dir: outputs/verifier/fall_v3/eval_ur_fall

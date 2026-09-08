@@ -1,0 +1,25 @@
+# v2pose exam: same single-look protocol as the fallv3 exam it clones,
+# on the v2pose re-extraction of the same held-out videos (2026-09-04).
+# Fall verifier v2pose against the UR Fall held-out test extraction, the single
+# pre-declared test look for this exam. UR Fall trains nothing in this lane and its test
+# role is permanent, under rule 4 of POLICY.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_urfall_v2pose.yaml
+#
+# window: must equal configs/events/train_fall_verifier_v3.yaml's window, because the
+# graph's input geometry pins n_steps and the time scale pins window_s.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/ur_fall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v2pose/verifier.onnx
+out_dir: outputs/verifier/fall_v2pose/eval_ur_fall

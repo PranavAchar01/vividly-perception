@@ -1,0 +1,193 @@
+schema_version: 1
+name: mevid
+display_name: MEVID (Multi-view Extended Videos with Identities, video person re-ID)
+task: [reid]
+bucket: TRAIN_PROTOTYPE
+# available since 2026-09-07: the three archives were downloaded on the training pod, hashed
+# on first download (the `files` rows below) and unpacked into the pod working copy that
+# configs/reid/train_mevid_a1.yaml names directly through its `root` key, without going
+# through the registry. No bytes live under data/train_prototype/mevid in a
+# development checkout. The credit line that
+# tests/test_registry.py::test_attribution_required_entries_are_credited requires for a live
+# entry is in the data attribution table of README.md.
+status: available
+licensing:
+  license: >
+    CC BY 4.0 for the underlying MEVA video (mevadata.org); UNDECLARED for the MEVID
+    annotation release (github.com/Kitware/MEVID carries no LICENSE file)
+  license_url: https://mevadata.org/
+  license_verbatim: >
+    mevadata.org states: "All MEVA data is available for use under a CC BY-4.0 license".
+    The MEVID annotation repository github.com/Kitware/MEVID carries NO LICENSE file:
+    verified 2026-09-07 against the GitHub REST API, which returns 404 for
+    /repos/Kitware/MEVID/license and `"license": null` on the repository object, and
+    whose root tree listing contains no LICENSE, COPYING or licence file of any name.
+    The README states only that "The dataset package is provided via the MEVA site" and
+    that the work is supported by ODNI/IARPA (2017-16110300001, 2022-21102100003) and
+    USAF contract FA8650-19-C-6036, with the standard government-purpose reproduction
+    reservation: "The U.S. Government is authorized to reproduce and distribute reprints
+    for governmental purposes notwithstanding any copyright annotation therein."
+  license_conflict_note: >
+    Open counsel flag, recorded rather than resolved. Two grants are in play and only one
+    of them is written down. The MEVA video the chips are cut from is explicitly CC BY 4.0,
+    which is permissive, allows commercial use and requires attribution. The MEVID layer,
+    that is the identity, outfit and tracklet annotations and the derived jpeg chips, which
+    is the part that actually trains a re-identification model, ships with no licence
+    statement at all: no LICENSE file, no licence line in the README, no terms page.
+    Silence is not a grant. The conservative reading therefore governs: commercial_use is
+    'conflicting', not 'permitted', and every weight this data touches stays in the
+    prototype weight class. Counsel questions for ship time, in order: (1) does the
+    CC BY 4.0 grant on the MEVA source video extend to Kitware's derived chips and
+    annotations, or is that a separate unlicensed work; (2) do the ODNI/IARPA and USAF
+    government-purpose clauses restrict downstream commercial use; (3) how does this
+    interact with the standing re-identification counsel items
+    CQ-11-mhmda-clothing-appearance (within-session appearance embeddings) and
+    CQ-20-fto-conduent-11176382-claim-chart (shipped-path re-identification of any kind).
+    Those two ids are not listed in counsel_questions below because listing them would,
+    under the TRAIN_PROTOTYPE rule in registry._validate, demand a `counsel_cleared_utc`,
+    which is a legal clearance record that nobody has made. When this entry is cleared,
+    add the ids and the clearance date together, in that one edit.
+  commercial_use: conflicting
+  attribution_required: true
+  redistribute: false
+  counsel_questions: []
+  counsel_cleared_utc: null
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-09-07T00:00:00Z"
+    method: >
+      ungated public download: anonymous HTTPS GET of three archives from the public
+      MEVA S3 bucket, with no account, no click-through, no terms page and no licence
+      statement to accept. Recorded because the owner directed the v2 re-identification
+      Phase A build on this corpus; acquisition.human_required is false, so this record
+      is informational rather than schema-required.
+    evidence_path: null
+  prototype_grant:
+    decision: mevid-phase-a
+    decided_utc: "2026-09-07"
+    decided_by: owner
+    attribution: >
+      MEVID: D. Davila, D. Du, et al., "MEVID: Multi-view Extended Videos with Identities
+      for Video Person Re-Identification", WACV 2023, arXiv:2211.04656; built on the MEVA
+      dataset (mevadata.org), CC BY 4.0.
+    ship_policy: >
+      trains interim prototype appearance embedders only, in the prototype weight class.
+      Nothing trained on this data is deployed commercially, externally distributed, or
+      quoted as clinical performance without counsel sign-off on the
+      license_conflict_note above. The standing acquisition rule applies and is recorded
+      in POLICY.md: datasets are acquired only by self-serve anonymous download, and no
+      dataset owner is ever contacted.
+provenance:
+  collector: Kitware (MEVID annotation release), over the MEVA corpus (mevadata.org)
+  imagery_source: >
+    real outdoor and indoor security-camera video from ordinary perspective and elevated
+    fixed cameras at a single site, which sits inside the v2 target domain of ordinary
+    perspective and top-view security-camera footage (POLICY.md, section 1). 158
+    identities in 598 outfits over 8,092 tracklets (average about 590 frames) from 33
+    camera views across 17 locations, spanning nine dates in a 73-day window; the release
+    ships pre-cut person chips, not video. The MEVID paper states that the underlying
+    MEVA data is demographically balanced to the continental United States by design. The
+    actors are consenting paid participants performing ordinary activities, not patients.
+  contains_real_people: true
+  simulated_medical_events: false
+  real_medical_events: false
+  citation: >
+    Davila, D., Du, D., et al., "MEVID: Multi-view Extended Videos with Identities for
+    Video Person Re-Identification", WACV 2023. arXiv:2211.04656. Source video: MEVA,
+    mevadata.org, CC BY 4.0.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    # Direct, anonymous, ungated S3 objects, copied exactly from the Kitware/MEVID README
+    # (fetched 2026-09-07).
+    - https://mevadata-public-01.s3.amazonaws.com/mevid-annotations/mevid-v1-bbox-train.tgz
+    - https://mevadata-public-01.s3.amazonaws.com/mevid-annotations/mevid-v1-bbox-test.tgz
+    - https://mevadata-public-01.s3.amazonaws.com/mevid-annotations/mevid-v1-annotation-data.zip
+  mirrors: []
+  human_steps: []
+# Barred, never fetched: the release also offers an actor check-in photos package
+# (mevid-v1-actor-checkin-photos.zip, 600 MB), which is a set of posed identification
+# photographs of every actor's face. It is a face dataset. POLICY.md, rule 2 forbids facial
+# recognition of any kind, and this repository has no use for it at any stage. It is
+# deliberately absent from `urls` above so no fetcher can reach it, and it must never be added.
+layout:
+  root: data/train_prototype/mevid
+  # The five index files sit at the dataset root beside bbox_train/ and bbox_test/, exactly
+  # as the upstream README's directory diagram shows. `annotations` points at the tracklet
+  # tables; the chip name lists and query_IDX.txt are read from the same directory by
+  # scripts/reid/mevid_dataset.py, which owns the format.
+  images: {train: bbox_train, test: bbox_test}
+  annotations: {train: track_train_info.txt, test: track_test_info.txt}
+ann_format: mevid_track_info
+# No vividly.data.convert module: MEVID is consumed directly by the torchreid loader in
+# scripts/reid/mevid_dataset.py, not converted to the COCO/MOT interchange. Nothing in the
+# detection or pose lanes reads it.
+converter: null
+# Archive hashes recorded 2026-09-07 on the training pod at first download from the public
+# MEVA bucket. The training and annotation archives were hashed from the files on disk; the
+# test archive was hashed from the download stream as it was unpacked, so its size_bytes is
+# the content length the bucket declares for it. Unpacked counts matched the upstream README:
+# 104 training identities in 3,609,156 chip files, 54 test identities in 1,186,251.
+files:
+  - {name: upstream/mevid-v1-bbox-train.tgz, size_bytes: 32684603246, sha256: 7277b794d40f611308f2d1b8588c9f4acc49c1c3fdeb11135304a52a347f03d1}
+  - {name: upstream/mevid-v1-bbox-test.tgz, size_bytes: 13974475339, sha256: 4d4ec2672324c26b9e4b128c550cf0de3964c0cf81ce37b5e7a4c71e25fc221d}
+  - {name: upstream/mevid-v1-annotation-data.zip, size_bytes: 12211153, sha256: 18a91691a0ccb3b79302c55643840bc5b7f16a9ed813d93bbe91edd151f982e8}
+hashes_unavailable_reason: null
+# Upstream's own figures, from the README (fetched 2026-09-07). tracklets/identities/outfits
+# are the whole-corpus totals; the train and test splits are broken out because the loader
+# asserts against them.
+counts:
+  identities: 158
+  outfits: 598
+  tracklets: 8092
+  camera_views: 33
+  locations: 17
+  train_identities: 104
+  train_outfits: 485
+  train_tracklets: 6338
+  test_identities: 54
+  test_outfits: 113
+  test_tracklets: 1754
+derived_from: []
+notes: >
+  Training corpus for re-identification Phase A of the v2 lane: OSNet-x1_0 from an
+  ImageNet-only initialisation, trained by scripts/reid/train_reid_mevid_a1.py under
+  configs/reid/train_mevid_a1.yaml. Re-identification here is a session-scoped appearance
+  embedding and nothing more: crops only, a human confirms every match, and no pose, gait,
+  body-shape or face signal is used. The scope rule is recorded in POLICY.md.
+  The entry is not training-only. Its held-out test split (bbox_test, track_test_info.txt and
+  query_IDX.txt) is the evaluation surface for the re-identification lane of record:
+  final_models/reid/README.md grades embedder 60164a99 on it at general-protocol mAP 0.204782
+  and rank-1 0.490506 over 316 queries against a 1,438-tracklet gallery. That page records the
+  split as held out entirely and touched only by the three evaluation protocols.
+  Format details, all pinned by tests/test_mevid_dataset.py because each one is silent when
+  read wrongly: (a) the columns of track_train_info.txt and track_test_info.txt are
+  start_index end_index person_id outfit_id camera_id, and the end offset is inclusive. The
+  worked example in the README, 0 9 103 20 424, is a ten-chip tracklet that starts at line 0
+  and ends at image 9, so the slice is names[start:end+1], and an exclusive read silently
+  drops one frame from every tracklet in the corpus. (b) start and end index the
+  corresponding line numbers in train_name.txt and test_name.txt, not frame numbers.
+  (c) query_IDX.txt holds line offsets into track_test_info.txt, and everything it does not
+  name is gallery, so query and gallery share bbox_test/. (d) camera_id is the real MEVA
+  camera number, so 424 is camera G424 rather than an index from 0 to K, and it must not be
+  remapped, because the per-camera debias pass groups on it. (e) chip names encode
+  identity, outfit, camera, tracklet and frame, and every index starts at 0. (f) The release
+  writes all three index tables in numpy float notation, so camera 424 appears as
+  4.240000000000000000e+02 and the README's plain integers appear nowhere on disk; the
+  loader accepts both spellings and refuses fractional values. The training table holds
+  6,339 rows on disk, one of them zero-length (row 1889: person 78, outfit 30, camera 341,
+  end offset one below its start), so the README's figure of 6,338 counts the usable
+  tracklets and `counts` above stays upstream's own statement; the loader keeps that row's
+  offset and skips it. The test table has 1,754 rows, none empty, and all 316 query
+  offsets are unique and in range.
+  Outfit variation is the reason this corpus was chosen: MEVID carries about 4 outfits per
+  identity, and a waiting-room re-identification that only works while the coat stays on is
+  not the thing being built, which is why the same-clothes benchmarks were passed over. The
+  trainer reports an in-house SC-approx protocol beside the standard one; that protocol is
+  in-house rather than the paper's, and it is never comparable to a published MEVID
+  same-clothes number.
+  Cross-lane calendar flag: MEVID chips are cut from MEVA video. MEVID train covers 6 dates
+  over 9 days and test 3 dates over 5 days from that corpus, so any future exam built on MEVA
+  footage must exclude the whole date and site windows MEVID spans, or a MEVID-trained
+  embedder will have seen exam footage. No such exam exists in this repository.

@@ -1,0 +1,137 @@
+schema_version: 1
+name: ajile12
+display_name: AJILE12 (long-term naturalistic human pose during EMU monitoring)
+task: [events]
+bucket: TRAIN_PROTOTYPE
+# All 55 of the 55 declared sessions are on disk under layout.root (55 *.pose.npz +
+# 55 *.epochs.json, 6.2 GiB), and the harvest manifest carries a sha256 for every one of
+# those 110 files.
+status: available
+licensing:
+  license: CC-BY-4.0 (DANDI:000055, OpenAccess)
+  license_url: https://dandiarchive.org/dandiset/000055
+  license_verbatim: >
+    DANDI Archive dandiset 000055 license field: "CC-BY-4.0"; access status
+    "OpenAccess". Page note at check time (2026-08-28): "This repository is
+    under review by NIH for potential modification in compliance with U.S.
+    federal Administration directives." Creative Commons Attribution 4.0
+    permits copying, redistribution, remixing and commercial use with
+    attribution and indication of changes.
+  license_conflict_note: >
+    No non-commercial and no share-alike clause. The data is pose trajectories
+    and neural recordings from real patients under passive clinical monitoring,
+    not acted events, shared de-identified by the authors; the use made of it
+    here is pose-only, as a seizure-free negative motion diet. What keeps
+    weights in the prototype class is the interim status of the event models,
+    not the licence. The note about the NIH review is recorded above; re-check
+    the dandiset status before any re-download.
+  commercial_use: permitted
+  attribution_required: true
+  redistribute: false
+  counsel_questions: []
+  counsel_cleared_utc: null
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-28T05:40:00Z"
+    method: >
+      admitted by the owner on 2026-08-28 as the matched-context negative diet
+      for the seizure lane, for internal use until clinical data exists; the
+      licence was checked anyway under the standing house rule and is
+      permissive (CC-BY-4.0). Ungated HTTPS streaming from the DANDI S3 bucket.
+    evidence_path: null
+  prototype_grant:
+    decision: ajile12-negative-diet
+    decided_utc: "2026-08-28"
+    decided_by: owner
+    attribution: >
+      AJILE12: S. M. Peterson, S. H. Singh, B. Dichter, M. Scheid, R. P. N.
+      Rao, B. W. Brunton, "AJILE12: Long-term naturalistic human intracranial
+      neural recordings and pose", Scientific Data 9, 184 (2022),
+      doi:10.1038/s41597-022-01280-y; DANDI:000055, CC-BY-4.0.
+    ship_policy: >
+      trains interim prototype seizure verifiers only, in the prototype weight
+      class: internal-demonstration weights, never quoted as clinical
+      performance, and no commercial deployment of anything trained on this
+      data without counsel sign-off.
+  event_grant:
+    decision: ajile12-negative-diet
+    decided_utc: "2026-08-28"
+    decided_by: owner
+    role: train_interim
+provenance:
+  collector: Peterson et al. (Brunton lab, University of Washington)
+  imagery_source: >
+    no imagery in the deposit that is used here: 2D upper-body pose
+    trajectories (9 keypoints, that is nose, ears, shoulders, elbows and
+    wrists, at 30 Hz in camera-plane pixels) estimated by the authors from
+    wall-mounted patient-room video during clinical epilepsy monitoring stays
+    of 7 to 9 days; 12 patients, 55 patient-days. Faces and video never leave
+    the source institution; the ingest is pose and interval labels only, which
+    respects the motion-level boundary recorded in POLICY.md, rule 4.
+  contains_real_people: true
+  simulated_medical_events: false
+  # The source stays are clinical epilepsy monitoring, so the patients' real
+  # seizures occur during the recorded days. The harvest takes pose and
+  # activity labels only, and the diet rule below draws negatives solely from
+  # labelled-normal spans, but the entry declares the events honestly, which is
+  # also what binds it to the event-grant machinery.
+  real_medical_events: true
+  citation: >
+    Peterson, Singh, Dichter, Scheid, Rao, Brunton, "AJILE12: Long-term
+    naturalistic human intracranial neural recordings and pose", Scientific
+    Data 9, 184 (2022). doi:10.1038/s41597-022-01280-y
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://dandiarchive.org/dandiset/000055
+    - https://api.dandiarchive.org/api/dandisets/000055/versions/draft/assets/
+  human_steps: []
+layout:
+  root: data/train_prototype/ajile12
+  # Harvested by scripts/data/harvest_ajile12.py: per-session pose npz plus
+  # epochs.json interval labels; the harvest is complete, 55 of 55 sessions on
+  # disk. No train and val split is declared here on purpose. The diet assembly
+  # over labelled-normal spans only has run: scripts/data/assemble_ajile12_diet.py
+  # under configs/events/ajile12_diet_v1.yaml emits the extraction-shaped negative
+  # tree that 57 training configs consume with force_label 0: every convulsion
+  # rotation recipe under configs/events/rot_train_conv_*.yaml except the arm-A
+  # files rot_train_conv_rot_f*_s*.yaml, which do not read it, plus the four
+  # head-to-head configs configs/events/h2h_conv_rotB_f2_*.yaml. Nothing here
+  # is a test surface: WU-SAHZU remains the only seizure exam.
+  images: {train: sessions, val: sessions}
+  annotations: {train: sessions, val: sessions}
+ann_format: ajile12_nwb_harvest
+converter: null                  # no module under src/vividly/data/convert/ handles this
+                                 # entry; the ingest is scripts/data/harvest_ajile12.py
+                                 # followed by scripts/data/assemble_ajile12_diet.py, both
+                                 # named in the layout comment above
+files:                           # the harvest manifest, pinned the way a derived
+                                 # corpus is pinned: the 110 session files it
+                                 # names (55 *.pose.npz + 55 *.epochs.json,
+                                 # 6.2 GiB) each carry their own sha256 inside
+                                 # it, so pinning the manifest pins the corpus
+                                 # without inlining 110 rows.
+  - name: manifest.jsonl
+    sha256: e78d623d25325db3b2d59e28445a49d3224feb28c781c9ee4fcf91dbfba84190
+    size_bytes: 22380
+hashes_unavailable_reason: null   # harvest finished; hashes are in manifest.jsonl above
+counts: {subjects: 12, sessions: 55, keypoints: 9, pose_hz: 30}
+derived_from: []
+notes: >
+  Negative-diet source for the seizure lane. Three measurements, the seizure v4
+  ward negatives, the v6 home-room negatives and the fall v2 mirror, established
+  that quiet must come from deployment-context-matched footage; AJILE12 is EMU
+  patient-room wall-camera context, the same context as the WU-SAHZU exam.
+  Diet rule, non-negotiable and recorded with the admission: negative windows are
+  drawn only from spans positively labelled as normal activity in each session's
+  intervals and epochs table (Sleep/rest, Inactive, Eat, Talk, TV, Computer/phone,
+  Other activity and their combinations). Blocklist spans (Data break, Camera
+  move/zoom, Private time) and all unlabelled time are excluded, so unannotated
+  clinical events cannot enter the diet, and an everything-minus-seizures
+  selection is barred. Patients' seizure spans are never used as positives,
+  because the labels are not available for repurposing. Probe measurements on
+  sub-04 ses-3, the smallest file: 313 epoch intervals covering 24.0 h, of which
+  about 4.7 h is positively labelled normal activity in that worst case. 9
+  keypoints at 2,592,000 samples per day per joint confirm 30 Hz over 24 h of
+  continuous coverage.

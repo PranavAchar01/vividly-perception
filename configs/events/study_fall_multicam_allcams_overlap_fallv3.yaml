@@ -1,0 +1,27 @@
+# Labelled stress study, declared 2026-08-28. Not an exam row, never merged into
+# exam denominators, and not a selection surface. The all-cameras exam found 25 of
+# 200 fall events with no overlapping window under the `contain` policy (worst case:
+# cam4 with 7), a 12.5% structural ceiling charged to extraction, not the model.
+# This study re-scores the slot holder only (fall v3, ONNX 67954c04) with policy
+# `overlap` on the same 192-view surface; geometry, stride and n_steps are unchanged, and
+# partial-presence windows are in-distribution (`present` channel, min_present 0.35 as
+# trained). A catch here is a recoverable-by-windowing label, not an exam catch, and
+# the finding informs the windowing lever in the live cascade.
+# The graph is the committed lane weight final_models/fall/model.onnx; its digest is in
+# final_models/fall/model.onnx.sha256 and its provenance is on final_models/fall/README.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/study_fall_multicam_allcams_overlap_fallv3.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: overlap
+  min_present: 0.35
+sources:
+  - dir: outputs/events/multicam_allcams_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: final_models/fall/model.onnx
+out_dir: outputs/verifier/fall_v3/study_multicam_allcams_overlap

@@ -1,0 +1,75 @@
+schema_version: 1
+name: <lowercase_snake>                # must equal the filename stem
+display_name: <human readable>
+task: [detection]                      # detection | pose | tracking | reid | events
+bucket: TRAIN_OK                       # TRAIN_OK | TRAIN_PROTOTYPE | EVAL_ONLY | LEGAL_HOLD
+status: planned                        # planned|requested|available|converted|blocked|dropped
+licensing:
+  license: <the operative licence, stated precisely>
+  license_url: <primary source, not a third-party tag>
+  license_verbatim: <the sentence(s) that decide the bucket>
+  license_conflict_note: null          # required (non-null) if commercial_use == conflicting
+  commercial_use: permitted            # permitted|prohibited|conflicting|unreviewed
+  attribution_required: true
+  redistribute: false
+  counsel_questions: []                # non-empty forbids TRAIN_OK; every id must have a
+                                       # section in docs/COUNSEL_QUESTIONS.md
+  counsel_cleared_utc: null
+  terms_acceptance: null               # required (non-null) once acquisition.human_required is
+                                       # true and status is past planned/requested. Shape:
+                                       #   accepted_by: owner
+                                       #   accepted_utc: <ISO-8601>
+                                       #   method: <e.g. web form at https://..., signed EULA>
+                                       #   evidence_path: <repo-relative file, or null>
+  # prototype_grant: required (non-null) for bucket TRAIN_PROTOTYPE and forbidden on
+  # TRAIN_OK. Shape:
+  #   prototype_grant:
+  #     decision: <grant id>
+  #     decided_utc: <ISO-8601>
+  #     decided_by: owner
+  #     attribution: <the credit line every external artefact carries>
+  #     ship_policy: <what the resulting weights may and may not do>
+  # TRAIN_PROTOTYPE also requires commercial_use permitted or conflicting,
+  # attribution_required true, and a counsel_cleared_utc whenever counsel_questions is
+  # non-empty.
+provenance:
+  collector: <who recorded it>
+  imagery_source: <where the pixels came from>
+  contains_real_people: true
+  simulated_medical_events: false      # POLICY.md, rule 4 bars acted medical events; true is
+                                       # admitted only with licensing.event_grant:
+                                       #   event_grant: {decision: <grant id>, decided_utc: "...",
+                                       #     decided_by: owner, role: train_interim|test_only}
+                                       # role train_interim admits the entry to bucket
+                                       # TRAIN_PROTOTYPE; role test_only admits it to bucket
+                                       # EVAL_ONLY. The two roles are exclusive.
+  real_medical_events: false           # real clinical event footage rides the same gate as
+                                       # simulated_medical_events: true here also requires
+                                       # licensing.event_grant, with the same role rule.
+  citation: <required citation, copied exactly>
+acquisition:
+  method: http                         # http|huggingface|gdrive|manual|generator|derived
+  human_required: false
+  urls: []
+  mirrors: []
+  human_steps: []                      # exact instructions if human_required
+layout:
+  root: data/train_ok/<name>           # must match the bucket; null only for LEGAL_HOLD
+  images: {train: images}
+  annotations: {train: annotations/train.json}
+ann_format: coco_keypoints
+converter: null                        # dotted path of the module under
+                                       # src/vividly/data/convert/ that handles this entry,
+                                       # for example vividly.data.convert.mvor_to_coco; null
+                                       # when no such module exists
+files: []                              # recorded by hand from the acquired bytes;
+                                       # scripts/data/download_dataset.py checks every row
+                                       # against what is on disk and writes _fetch_receipt.json
+                                       # beside them, and never edits this file
+hashes_unavailable_reason: null
+counts: {}
+derived_from: []                       # a TRAIN_OK child needs TRAIN_OK parents; a
+                                       # TRAIN_PROTOTYPE child needs TRAIN_OK or
+                                       # TRAIN_PROTOTYPE parents
+notes: >
+  <the facts about this source that would otherwise be lost>

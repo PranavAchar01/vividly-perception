@@ -1,0 +1,295 @@
+# RT-DETRv4-S person fine-tune, DINOv2-B/14 teacher enabled: v2 eyes arm B2-DINOv2T
+# (authored 2026-09-05).
+#
+# The arm ran to completion over 16.8 hours and was not promoted: checkpoint
+# 9ecb46272c838cf9032d53db73e491dc82de7a1d9c9a6e098b517d106b5382a3, dev-val AP
+# 0.8345 against the 0.8368 displacement bar, with the conclusion of record that
+# DINOv2-B distillation adds nothing on this training set
+# (final_models/eyes/README.md).
+#
+# Every path below is the pod layout described in TRAINING.md, not a repository path.
+#
+# Installed by scripts/pod/eyes_chain.sh into <RT-DETRv4>/configs/rtv4/. Sibling of
+# rtv4_s_person_v2_noteacher.yml; every key and value of that file's recipe is
+# reproduced here unchanged except the three distillation keys and output_dir.
+#
+# Every claim in this header is sourced to research/eyes-dinov2-teacher-arm.md, which
+# cites the RT-DETRv4 tree at the PINS.yaml pin 55fefaaed7efe2a5f72d0a18fd4e05965e35c292
+# (third_party/PINS.yaml, repos.rtdetrv4.pin) by file and by the named element inside
+# the file. Every RTV4 path below is that tree at that SHA.
+#
+# ===========================================================================
+# Delta from rtv4_s_person_v2_noteacher.yml: exactly the three distill keys
+# ===========================================================================
+# Distillation is off unless all three are true; the noteacher fork turns off all
+# three, and this file turns on all three and changes nothing else that touches
+# training (research/eyes-dinov2-teacher-arm.md, section 2, the table of the three
+# required config keys):
+#
+#   1. teacher_model:                    absent   -> present, DINOv2TeacherModel
+#        the gate is presence only (the teacher_model property in
+#        RTV4/engine/core/yaml_config.py); there is no `enabled: false`, and an
+#        unknown `type` raises.
+#   2. HybridEncoder.distill_teacher_dim:  0      -> 768
+#        > 0 is what builds the projector at all (the feature_projector construction
+#        in RTV4/engine/rtv4/hybrid_encoder.py);
+#        it must equal the teacher's embed_dim or the criterion raises on the first
+#        batch (the channel check in RTV4/engine/rtv4/rtv4_criterion.py).
+#        DINOv2-B/14 embed_dim = 768.
+#   3. RTv4Criterion.losses:  ['mal','boxes','local'] -> + 'distill', loss_distill: 5
+#        'distill' must be in the list to dispatch (the loss map and the distill
+#        dispatch in rtv4_criterion.py). weight 5 = the published S recipe's own value
+#        (the loss_distill entry of RTV4/configs/rtv4/rtv4_hgnetv2_s_coco.yml) and the
+#        protocol's declared value (research/eyes-instrument-protocol.md, section I3,
+#        item 3).
+#
+# Not a training delta, but a real difference: output_dir points at its own
+# directory so a B2 run cannot overwrite a B1 seed's artefacts.
+#
+# Not copied from the published S recipe, deliberately: `distill_adaptive_params`
+# (the distill_adaptive_params block of rtv4_hgnetv2_s_coco.yml, {enabled: True,
+# rho: 11, delta: 1, default_weight: 20}). Leaving it out makes loss_distill a fixed 5
+# for all 48 epochs; `distill_adaptive_params` defaults to None in rtv4_criterion.py and
+# `_get_distillation_weight_for_epoch()` then just returns weight_dict's value.
+# Fixed 5 is the simpler pre-declaration and keeps the seed-to-seed
+# comparison against B1 clean; the adaptive schedule would retarget the weight every
+# epoch (the adaptive re-weighting in det_solver.py). Recorded as item 5 of the
+# open-items section of research/eyes-dinov2-teacher-arm.md.
+#
+# Everything else is identical to noteacher by construction:
+#   data (same img_folder / ann_file / dev-val), epoches 48, flat_epoch 28,
+#   no_aug_epoch 8, warmup_iter 800, aug policy [4,28,40], mixup [4,28],
+#   stop_epoch 40, total_batch_size 32, val batch 64, num_workers 16/0,
+#   AdamW lr 2e-4 / backbone 1e-4 / wd 1e-4, EMA + lr scheduler inherited
+#   untouched from the include chain, seed passed on the CLI (--seed=N) and
+#   absent from both configs.
+#
+# ===========================================================================
+# Correction: the teacher input is stride-32, 640 -> 280. This supersedes 560x560.
+# ===========================================================================
+# research/eyes-instrument-protocol.md, section I3 item 3, records a teacher input of
+# 560x560 on the ground that a 40x40 grid matches the student's stride-16. That premise
+# is wrong at this pin and the number below supersedes it (research/eyes-dinov2-teacher-arm.md, headline
+# finding 1 and section 6):
+#
+#   use_encoder_idx: [2] over feat_strides: [8,16,32]
+#   (the use_encoder_idx and feat_strides keys of RTV4/configs/base/dfine_hgnetv2.yml,
+#   never overridden in this include chain, and confirmed in B1's own dumped config in
+#   outputs/pod_backup/train_rtv4_s0_final.log, a run artefact under the gitignored
+#   outputs/ tree)
+#   => encoder_idx_for_distillation = 2 (hybrid_encoder.py)
+#   => the projected student feature is the stride-32 map: 20x20 at 640 input.
+#
+# The student never taps stride-16. The teacher derives its own input size from the
+# student's; there is no 560 knob (the forward pass of dinov2_teacher.py):
+#
+#   target_downsample_factor: 32  ->  teacher in 280x280  ->  20x20  ->  exact match,
+#                                     criterion does no resize at all
+#   target_downsample_factor: 16  ->  teacher in 560x560  ->  40x40  ->  bilinearly
+#                                     downsampled 40->20 by the spatial-resize step
+#                                     of rtv4_criterion.py,
+#                                     i.e. the extra resolution is averaged away
+#
+# 560x560 still runs; it just does not do what the protocol says it does, and costs
+# ~4x more teacher compute for a grid that is then pooled to 20x20. Making the
+# student actually tap stride-16 would mean use_encoder_idx: [1], which moves the
+# AIFI transformer from S5 to S4: an architecture change, 4x the AIFI token count,
+# and a breach of the bake-off's minimal-delta rule. The recommendation is not to.
+# The addendum to the protocol records this correction (dated 2026-09-05).
+#
+# ===========================================================================
+# VRAM: the teacher runs full-batch in fp32, and the dry-run gate is the protection.
+# ===========================================================================
+# The micro-batched no_grad teacher of research/eyes-instrument-protocol.md, section I3
+# item 3, is a patch that would have to be written, not a config key; no micro-batching
+# exists at this pin (research/eyes-dinov2-teacher-arm.md, headline finding 2). In the
+# training step of RTV4/engine/solver/det_engine.py the teacher is called once on the
+# whole batch of 32 under no_grad, and that call sits outside the autocast block that
+# opens immediately after it, so the teacher runs in fp32.
+#
+# B1 seed 0 peaked at 26,521 MiB with no teacher (research/eyes-instrument-protocol.md,
+# section I3 item 1), leaving ~4 GB under the declared 30,500 MiB gate. The completed
+# B2 run settled the question by measurement: peak 23,758 MiB against the same
+# 30,500 MiB gate, with the load-clean assertion passed (final_models/eyes/README.md).
+# The 15-minute dry-run VRAM gate in scripts/pod/eyes_chain.sh (<= 30,500 MiB, polled
+# for the maximum) remains the governing instrument for any re-run. If it trips, the
+# levers in order of least
+# damage: tdf 16 -> 32 (already 32 here); autocast/.half() the frozen teacher;
+# micro-batch the teacher call. Do not reduce total_batch_size: that changes the
+# recipe and breaks comparability with the B1 seeds.
+#
+# ===========================================================================
+# Loader hazard: strict=False means the wrong weights load silently.
+# ===========================================================================
+# The loader in dinov2_teacher.py does `torch.load(weights_path)` then
+# `load_state_dict(state_dict, strict=False)`. If the key namespace does not match,
+# the load succeeds, logs missing/unexpected at INFO level (which the trainer's logging
+# does not surface), and the teacher trains on random weights
+# (research/eyes-dinov2-teacher-arm.md, section 5).
+#
+#   - `facebook/dinov2-base` on HF is the `transformers` port (Dinov2Model), whose
+#     names are embeddings.patch_embeddings.projection.weight / encoder.layer.N.*,
+#     not the original repo's patch_embed.proj.weight / blocks.N.*. Handing that
+#     file to that loader loads zero tensors and raises nothing.
+#   - So the fetch must be the original facebookresearch/dinov2 state dict,
+#     dinov2_vitb14_pretrain.pth, and the `source='local'` argument of the same
+#     loader's torch.hub.load additionally requires a local clone of
+#     facebookresearch/dinov2 on disk for its hubconf.py.
+#     Both are fetched by the B2_FETCH_TEACHER stage in scripts/pod/eyes_chain.sh and
+#     pinned in third_party/PINS.yaml (repos.dinov2 + checkpoints.dinov2_vitb14).
+#   - Mandatory launch assertion: the chain must assert that load_state_dict's
+#     missing_keys is empty. A wrong model size fails loudly one step later
+#     (embed_dim != 768 -> the criterion raises at its channel check in
+#     rtv4_criterion.py); only wrong key names at the right size fail silently.
+#     That assertion is the only guard.
+#
+# Also load-bearing, from research/eyes-dinov2-teacher-arm.md, section 7:
+#   - `-t $CKPT/rtv4_s_coco.pth` reports the two new projector tensors
+#     encoder.feature_projector.0.{weight,bias} as `missed`. That is correct and
+#     expected. The B2 launch check, applied at the launch of the run recorded on
+#     final_models/eyes/README.md and standing for any re-run, is: `missed` ==
+#     exactly what B1 saw
+#     (decoder.denoising_class_embed.weight; unmatched = enc_score_head +
+#     dec_score_head.0-2, per the startup-check rule section of
+#     research/eyes-rtdetrv4-training-record.md) plus
+#     exactly those two entries and nothing else. Anything else is a stop.
+#   - A B2 checkpoint carries 796 tensors, not B1's 794. Score and export it through
+#     this config, never through the noteacher one: the load_state_dict call in
+#     export_onnx.py defaults to strict=True. The projector is skipped at eval (the
+#     training-only branch in hybrid_encoder.py), so the ONNX graph is identical
+#     either way.
+#   - scripts/detector/soup_v2.py will refuse a B1+B2 mix on the key-set check.
+#     Correct behaviour: B1 and B2 are different soup families. Do not override it.
+#   - No DINOv2 tensor is ever serialized into a B2 checkpoint
+#     (det_solver.py's state_dict() skips the teacher_model key), and --test-only
+#     never builds the teacher (train.py routes --test-only to solver.val()), so
+#     grading B2 needs no teacher and no weights.
+#
+# Launch (single 5090, plain python, for the same reason as noteacher; -t skips the
+# backbone download whose error path crashes without a process group):
+#
+#   python train.py -c configs/rtv4/rtv4_s_person_v2_dinov2t.yml \
+#       --use-amp --seed=1 -t /workspace/ckpt/rtv4_s_coco.pth
+#
+# Never pass -d cuda:0, which autocast rejects; select the GPU with
+# CUDA_VISIBLE_DEVICES. CPU smoke of this config is impossible: the distill
+# loss's fallback path hardcodes a CUDA tensor (the missing-output branch of
+# rtv4_criterion.py).
+#
+# Licence: DINOv2 code and weights are Apache-2.0 (research/v2-training-stack.md,
+# the backbone policy prose and the licence ledger table row, both [V] against the raw
+# LICENSE). No click-wrap, unlike DINOv3. The clone's LICENSE text must still be
+# verified to read Apache-2.0 before any run; the pre-2023-06 dinov2 tree was
+# CC-BY-NC-4.0 (PINS.yaml repos.dinov2 license_notes). Counsel item C-1 is unchanged
+# in shape by this arm: the init rtv4_s_coco.pth was still trained with a DINOv3
+# teacher upstream (third_party/PINS.yaml, repos.rtdetrv4.license_notes).
+__include__: ['../dfine/dfine_hgnetv2_s_coco.yml', '../base/rtv4.yml']
+
+output_dir: /workspace/outputs/rtv4_s_person_v2_b2_dinov2t
+
+# ---- Distill key 1 of 3: the teacher block (absent in noteacher) ----------------
+# The schema is exactly DINOv2TeacherModel.__init__ in
+# RTV4/engine/rtv4/dinov2_teacher.py; the teacher_model property in yaml_config.py pops
+# `type` and splats the rest as **kwargs, so every key here must be a real parameter
+# name and there are no others.
+teacher_model:
+  type: "DINOv2TeacherModel"
+  # source='local' in that loader's torch.hub.load: a real facebookresearch/dinov2
+  # clone must exist here for its hubconf.py. Fetched and pinned by eyes_chain.sh
+  # B2_FETCH_TEACHER.
+  dinov2_repo_path: /workspace/teachers/dinov2
+  # Must be set: the default is dinov2_vitl14_reg (ViT-L, embed_dim 1024), which
+  # would fail the criterion's 768 channel check (the model_name default and the
+  # embed_dim read in dinov2_teacher.py).
+  model_name: dinov2_vitb14
+  # Must be the original state dict, not the HF transformers port; see the loader
+  # hazard above. strict=False in that loader makes the wrong namespace load zero
+  # tensors.
+  weights_path: /workspace/teachers/dinov2_vitb14_pretrain.pth
+  # 14 is correct for every DINOv2 variant (the patch_size default in
+  # dinov2_teacher.py).
+  patch_size: 14
+  # The stride-32 correction. 640 / 32 = 20; 20 * 14 = 280 -> teacher sees 280x280,
+  # emits a 20x20 grid, exactly the student's stride-32 map, so the spatial-resize
+  # step of rtv4_criterion.py performs no resize. Do not set 16 (the protocol's
+  # 560x560) without re-declaring it as a separate arm; see the correction block above.
+  target_downsample_factor: 32
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+# ---- Distill key 2 of 3: build the projector, sized to the teacher --------------
+# 0 in noteacher. > 0 builds nn.Linear(hidden_dim=256 -> 768), 197,376 new params
+# (+1.9% on a 10.18M model), randomly initialized and reported as `missed` on the
+# -t load. 768 must equal DINOv2-B/14's embed_dim (the distill_teacher_dim parameter
+# and the projector construction in hybrid_encoder.py; the channel check in
+# rtv4_criterion.py).
+HybridEncoder:
+  distill_teacher_dim: 768
+
+# ---- Distill key 3 of 3: dispatch the loss, at the published S weight -----------
+# noteacher's losses were ['mal','boxes','local']. 'distill' re-added here; the
+# weight_dict entry merges into the base include's dict (merge_dict, a recursive
+# deep merge, in RTV4/engine/core/yaml_utils.py), overriding the loss_distill value of
+# base/rtv4.yml, 10.0, with the S recipe's 5. loss_distill is mean per-token cosine
+# distance in [0,2] over every spatial position, background included (the
+# normalize-and-compare block of rtv4_criterion.py).
+# distill_adaptive_params is deliberately not set; see the header.
+RTv4Criterion:
+  weight_dict:
+    loss_distill: 5
+  losses: ['mal', 'boxes', 'local', 'distill']
+
+# =============================================================================
+# Below this line: byte-for-byte the same recipe as rtv4_s_person_v2_noteacher.yml.
+# Any change here must be made in both files or the arms stop comparing.
+# =============================================================================
+num_classes: 1
+remap_mscoco_category: False
+
+epoches: 48
+flat_epoch: 28
+no_aug_epoch: 8
+warmup_iter: 800
+
+train_dataloader:
+  # num_workers 16 (recipe default 4): throughput-only. The 5090 sat data-starved
+  # at 0.84 s/it (24-min epochs) decoding 1080p mosaic batches with 4 workers on
+  # a 48-vCPU pod, measured live 2026-09-01, seed 0 epochs 0-5. Not part of the
+  # training recipe; identical across all noise-floor seeds.
+  num_workers: 16
+  dataset:
+    img_folder: /workspace/data/person_v2/frames/train
+    ann_file: /workspace/data/person_v2/annotations/person_v2_train.json
+    transforms:
+      policy:
+        epoch: [4, 28, 40]
+  collate_fn:
+    mixup_epochs: [4, 28]
+    stop_epoch: 40
+  total_batch_size: 32
+
+val_dataloader:
+  # 0 (was 8): the epoch-5->eval boundary deadlocked live (2026-09-03, B1):
+  # main thread in do_poll, exactly 8 spawned val workers wedged at fork.
+  # Single-process eval adds ~45 s per epoch and cannot fork-deadlock. The
+  # setting is recorded in the Model B section of research/eyes-noise-floor.md;
+  # the /proc wchan observation itself is recorded only here.
+  # Throughput-only; DEIM keeps 8.
+  num_workers: 0
+  dataset:
+    img_folder: /workspace/data/person_v2/frames/train
+    ann_file: /workspace/data/person_v2/annotations/person_v2_devval.json
+  total_batch_size: 64
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone)(?!.*bn).*$'
+      lr: 0.0001
+    -
+      params: '^(?=.*(?:norm|bn)).*$'
+      weight_decay: 0.
+  lr: 0.0002
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001

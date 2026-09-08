@@ -1,0 +1,474 @@
+{
+ "calibration": {
+  "degenerate_fit": false,
+  "fitted_on": "train_holdout_val",
+  "note": "score = sigmoid(logit / temperature); monotonic in exact math, grid bounded [0.25, 8] against float saturation",
+  "temperature": 1.0251
+ },
+ "channels": [
+  "vy",
+  "vx",
+  "h_rel",
+  "aspect",
+  "angle_norm",
+  "angle_valid",
+  "kpc",
+  "present"
+ ],
+ "checkpoint": {
+  "file": "verifier.pt",
+  "sha256": "3d2d17eed74b735b4baef6e5f84eef1d9ed6f4c2b02f14ed072c7cbe9f221526"
+ },
+ "config": {
+  "holdout_fraction": 0.2,
+  "model": {
+   "blocks": 3,
+   "dropout": 0.15,
+   "hidden": 64
+  },
+  "out_dir": "outputs/verifier/fall_v3",
+  "schema_version": 1,
+  "sources": [
+   {
+    "dir": "outputs/events/le2i_tracks_v1",
+    "event_keys": [
+     "fall_start_t",
+     "fall_end_t"
+    ]
+   },
+   {
+    "dir": "outputs/events/gmdcsa24_tracks_v1",
+    "event_keys": [
+     "fall_start_t",
+     "fall_end_t"
+    ]
+   },
+   {
+    "dir": "outputs/events/caucafall_tracks_v1",
+    "event_keys": [
+     "fall_start_t",
+     "fall_end_t"
+    ]
+   }
+  ],
+  "task": "fall",
+  "train": {
+   "batch": 256,
+   "device": "cpu",
+   "epochs": 60,
+   "lr": 0.001,
+   "pos_weight": "auto",
+   "seed": 20260826,
+   "weight_decay": 0.0001
+  },
+  "window": {
+   "contain_margin_s": 0.5,
+   "min_present": 0.35,
+   "n_steps": 64,
+   "policy": "contain",
+   "stride_s": 1.5,
+   "window_s": 8.0
+  }
+ },
+ "disclosure": "Interim prototype event verifier, admitted under the acted-event carve-out of POLICY.md, rule 4. Trained on public acted-fall footage, on synthetic motion, or on both. Internal demonstration only; no number here is clinical detection performance. Real test numbers come only from the registry-enforced held-out sets.",
+ "git_commit": "b1dfe79",
+ "history": [
+  {
+   "epoch": 1,
+   "seconds": 15.6,
+   "train_loss": 0.98724,
+   "val_auc": 0.96952
+  },
+  {
+   "epoch": 2,
+   "seconds": 34.8,
+   "train_loss": 0.63598,
+   "val_auc": 0.97329
+  },
+  {
+   "epoch": 3,
+   "seconds": 55.1,
+   "train_loss": 0.52154,
+   "val_auc": 0.9738
+  },
+  {
+   "epoch": 4,
+   "seconds": 74.5,
+   "train_loss": 0.42027,
+   "val_auc": 0.97209
+  },
+  {
+   "epoch": 5,
+   "seconds": 96.4,
+   "train_loss": 0.33437,
+   "val_auc": 0.97979
+  },
+  {
+   "epoch": 6,
+   "seconds": 120.3,
+   "train_loss": 0.27309,
+   "val_auc": 0.98459
+  },
+  {
+   "epoch": 7,
+   "seconds": 141.9,
+   "train_loss": 0.22672,
+   "val_auc": 0.98767
+  },
+  {
+   "epoch": 8,
+   "seconds": 161.3,
+   "train_loss": 0.18897,
+   "val_auc": 0.98973
+  },
+  {
+   "epoch": 9,
+   "seconds": 182.6,
+   "train_loss": 0.171,
+   "val_auc": 0.99195
+  },
+  {
+   "epoch": 10,
+   "seconds": 202.9,
+   "train_loss": 0.15272,
+   "val_auc": 0.99366
+  },
+  {
+   "epoch": 11,
+   "seconds": 222.3,
+   "train_loss": 0.14438,
+   "val_auc": 0.99435
+  },
+  {
+   "epoch": 12,
+   "seconds": 241.9,
+   "train_loss": 0.13378,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 13,
+   "seconds": 261.9,
+   "train_loss": 0.12157,
+   "val_auc": 0.99486
+  },
+  {
+   "epoch": 14,
+   "seconds": 281.6,
+   "train_loss": 0.1173,
+   "val_auc": 0.99435
+  },
+  {
+   "epoch": 15,
+   "seconds": 301.4,
+   "train_loss": 0.10841,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 16,
+   "seconds": 320.2,
+   "train_loss": 0.1064,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 17,
+   "seconds": 340.7,
+   "train_loss": 0.1011,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 18,
+   "seconds": 366.0,
+   "train_loss": 0.08388,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 19,
+   "seconds": 389.6,
+   "train_loss": 0.07995,
+   "val_auc": 0.99435
+  },
+  {
+   "epoch": 20,
+   "seconds": 413.1,
+   "train_loss": 0.07101,
+   "val_auc": 0.99486
+  },
+  {
+   "epoch": 21,
+   "seconds": 436.0,
+   "train_loss": 0.07045,
+   "val_auc": 0.99503
+  },
+  {
+   "epoch": 22,
+   "seconds": 460.3,
+   "train_loss": 0.08136,
+   "val_auc": 0.99503
+  },
+  {
+   "epoch": 23,
+   "seconds": 484.2,
+   "train_loss": 0.07113,
+   "val_auc": 0.99503
+  },
+  {
+   "epoch": 24,
+   "seconds": 508.3,
+   "train_loss": 0.06475,
+   "val_auc": 0.99418
+  },
+  {
+   "epoch": 25,
+   "seconds": 531.2,
+   "train_loss": 0.06799,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 26,
+   "seconds": 554.0,
+   "train_loss": 0.06123,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 27,
+   "seconds": 577.2,
+   "train_loss": 0.05416,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 28,
+   "seconds": 600.0,
+   "train_loss": 0.04832,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 29,
+   "seconds": 622.6,
+   "train_loss": 0.05811,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 30,
+   "seconds": 645.3,
+   "train_loss": 0.04691,
+   "val_auc": 0.99435
+  },
+  {
+   "epoch": 31,
+   "seconds": 668.1,
+   "train_loss": 0.04174,
+   "val_auc": 0.99401
+  },
+  {
+   "epoch": 32,
+   "seconds": 690.4,
+   "train_loss": 0.04203,
+   "val_auc": 0.99486
+  },
+  {
+   "epoch": 33,
+   "seconds": 712.8,
+   "train_loss": 0.03693,
+   "val_auc": 0.99572
+  },
+  {
+   "epoch": 34,
+   "seconds": 735.1,
+   "train_loss": 0.04066,
+   "val_auc": 0.99589
+  },
+  {
+   "epoch": 35,
+   "seconds": 757.0,
+   "train_loss": 0.03377,
+   "val_auc": 0.99503
+  },
+  {
+   "epoch": 36,
+   "seconds": 777.0,
+   "train_loss": 0.03485,
+   "val_auc": 0.99503
+  },
+  {
+   "epoch": 37,
+   "seconds": 797.9,
+   "train_loss": 0.03393,
+   "val_auc": 0.99538
+  },
+  {
+   "epoch": 38,
+   "seconds": 818.5,
+   "train_loss": 0.03292,
+   "val_auc": 0.99486
+  },
+  {
+   "epoch": 39,
+   "seconds": 838.5,
+   "train_loss": 0.03419,
+   "val_auc": 0.99435
+  },
+  {
+   "epoch": 40,
+   "seconds": 858.3,
+   "train_loss": 0.03606,
+   "val_auc": 0.99401
+  },
+  {
+   "epoch": 41,
+   "seconds": 879.3,
+   "train_loss": 0.03333,
+   "val_auc": 0.99384
+  },
+  {
+   "epoch": 42,
+   "seconds": 900.8,
+   "train_loss": 0.02305,
+   "val_auc": 0.99384
+  },
+  {
+   "epoch": 43,
+   "seconds": 923.3,
+   "train_loss": 0.0223,
+   "val_auc": 0.99384
+  },
+  {
+   "epoch": 44,
+   "seconds": 945.9,
+   "train_loss": 0.02754,
+   "val_auc": 0.99366
+  },
+  {
+   "epoch": 45,
+   "seconds": 968.0,
+   "train_loss": 0.02399,
+   "val_auc": 0.99384
+  },
+  {
+   "epoch": 46,
+   "seconds": 990.5,
+   "train_loss": 0.01887,
+   "val_auc": 0.99418
+  },
+  {
+   "epoch": 47,
+   "seconds": 1013.0,
+   "train_loss": 0.02227,
+   "val_auc": 0.99435
+  },
+  {
+   "epoch": 48,
+   "seconds": 1036.2,
+   "train_loss": 0.0236,
+   "val_auc": 0.99503
+  },
+  {
+   "epoch": 49,
+   "seconds": 1058.8,
+   "train_loss": 0.0212,
+   "val_auc": 0.99538
+  },
+  {
+   "epoch": 50,
+   "seconds": 1082.0,
+   "train_loss": 0.01979,
+   "val_auc": 0.99521
+  },
+  {
+   "epoch": 51,
+   "seconds": 1104.9,
+   "train_loss": 0.0255,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 52,
+   "seconds": 1127.9,
+   "train_loss": 0.01989,
+   "val_auc": 0.99418
+  },
+  {
+   "epoch": 53,
+   "seconds": 1150.6,
+   "train_loss": 0.01943,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 54,
+   "seconds": 1173.2,
+   "train_loss": 0.01932,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 55,
+   "seconds": 1195.4,
+   "train_loss": 0.01563,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 56,
+   "seconds": 1218.2,
+   "train_loss": 0.01771,
+   "val_auc": 0.99418
+  },
+  {
+   "epoch": 57,
+   "seconds": 1240.8,
+   "train_loss": 0.01539,
+   "val_auc": 0.99469
+  },
+  {
+   "epoch": 58,
+   "seconds": 1264.0,
+   "train_loss": 0.01318,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 59,
+   "seconds": 1287.3,
+   "train_loss": 0.01336,
+   "val_auc": 0.99452
+  },
+  {
+   "epoch": 60,
+   "seconds": 1312.9,
+   "train_loss": 0.0153,
+   "val_auc": 0.99486
+  }
+ ],
+ "n_negative": 691,
+ "n_positive": 190,
+ "n_videos": 282,
+ "n_windows": 881,
+ "onnx": {
+  "file": "verifier.onnx",
+  "sha256": "67954c04eeef301ff2ab3a1238a79dba2bfa397b3eba5a93a1d3102d7e00010e"
+ },
+ "task": "fall",
+ "val_auc_best": 0.99589,
+ "val_operating_points": [
+  {
+   "fn": 2,
+   "fp": 2,
+   "precision": 0.95,
+   "recall": 0.95,
+   "threshold": 0.5,
+   "tp": 38
+  },
+  {
+   "fn": 4,
+   "fp": 2,
+   "precision": 0.9473684210526315,
+   "recall": 0.9,
+   "threshold": 0.8,
+   "tp": 36
+  },
+  {
+   "fn": 6,
+   "fp": 2,
+   "precision": 0.9444444444444444,
+   "recall": 0.85,
+   "threshold": 0.9,
+   "tp": 34
+  }
+ ],
+ "vividly_weight_class": "prototype"
+}

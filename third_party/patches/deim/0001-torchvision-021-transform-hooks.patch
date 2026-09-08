@@ -1,0 +1,47 @@
+diff --git a/engine/data/transforms/_transforms.py b/engine/data/transforms/_transforms.py
+index 31588df..23684ee 100644
+--- a/engine/data/transforms/_transforms.py
++++ b/engine/data/transforms/_transforms.py
+@@ -55,7 +55,7 @@ class PadToSize(T.Pad):
+         BoundingBoxes,
+     )
+     def _get_params(self, flat_inputs: List[Any]) -> Dict[str, Any]:
+-        sp = F.get_spatial_size(flat_inputs[0])
++        sp = (F.get_size if hasattr(F, 'get_size') else F.get_spatial_size)(flat_inputs[0])
+         h, w = self.size[1] - sp[0], self.size[0] - sp[1]
+         self.padding = [0, 0, w, h]
+         return dict(padding=self.padding)
+@@ -71,6 +71,16 @@ class PadToSize(T.Pad):
+         padding = params['padding']
+         return F.pad(inpt, padding=padding, fill=fill, padding_mode=self.padding_mode)  # type: ignore[arg-type]
+
++    # torchvision >= 0.21 made the per-input hooks public (_get_params -> make_params,
++    # _transform -> transform); without these aliases every batch raises bare
++    # NotImplementedError in the DataLoader worker (upstream DEIM PR #47, unmerged;
++    # torch 2.7/cu128 pairs with torchvision 0.22, which is past the rename).
++    def make_params(self, flat_inputs: List[Any]) -> Dict[str, Any]:
++        return self._get_params(flat_inputs)
++
++    def transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
++        return self._transform(inpt, params)
++
+     def __call__(self, *inputs: Any) -> Any:
+         outputs = super().forward(*inputs)
+         if len(outputs) > 1 and isinstance(outputs[1], dict):
+@@ -113,6 +123,9 @@ class ConvertBoxes(T.Transform):
+
+         return inpt
+
++    def transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
++        return self._transform(inpt, params)
++
+
+ @register()
+ class ConvertPILImage(T.Transform):
+@@ -135,3 +148,6 @@ class ConvertPILImage(T.Transform):
+         inpt = Image(inpt)
+
+         return inpt
++
++    def transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
++        return self._transform(inpt, params)

@@ -1,0 +1,42 @@
+# Limb-channel retry: the only change from the 8/8-negative limb run is
+# window.limb_conf_min 0.5 (was the hardcoded 0.2). Same seed, same
+# architecture, same windows, same patients, same extraction tree.
+# Pre-declared gate: the mean leave-one-patient-out validation AUC must beat the control's
+# 0.8634, and no fold may sit more than 0.03 below its own control fold
+# (pat01 0.8981, pat02 0.9508, pat05 0.6129, pat13 0.9917). The control run these fold
+# values come from is recorded in research/seizure-limb-channel-gate.md.
+holdout_fraction: 0.2
+holdout_locations:
+- pat02
+model:
+  blocks: 3
+  dropout: 0.15
+  hidden: 64
+out_dir: outputs/verifier/_lopo/limbgate5_pat02
+schema_version: 1
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2kp
+  locations:
+  - pat01
+  - pat02
+  - pat05
+  - pat13
+task: convulsion
+train:
+  batch: 256
+  device: cpu
+  epochs: 60
+  lr: 0.001
+  pos_weight: auto
+  seed: 20260826
+  weight_decay: 0.0001
+window:
+  limb_channels: true
+  limb_conf_min: 0.5
+  min_present: 0.35
+  n_steps: 64
+  overlap_min_s: 4.0
+  policy: overlap
+  scene_channels: true
+  stride_s: 3.0
+  window_s: 12.0

@@ -1,0 +1,28 @@
+# Labelled stress study (declared 2026-08-28). This is not an exam row, is never
+# merged into exam denominators, and is not a selection surface. It measures how much
+# recall the fall lane's `contain` window policy leaves on the table. The UR Fall exam
+# has 18 zero-window clips (1.8 to 6.2 s, shorter than the 8.0 s window span) that are
+# structurally invisible under contain, plus other events whose tracks never span a
+# full window. The study re-scores the slot holder alone (fall v3, ONNX 67954c04) with
+# policy `overlap`. Window geometry, stride and n_steps are unchanged, so the model
+# still sees its native timescale; partial-presence windows are in-distribution (the `present`
+# channel, min_present 0.35 as trained). A catch here is a recoverable-by-windowing
+# label, not an exam catch; the finding informs the live-cascade windowing lever.
+# The graph is the committed lane weight final_models/fall/model.onnx; its digest is in
+# final_models/fall/model.onnx.sha256 and its provenance is on final_models/fall/README.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/study_fall_urfall_overlap_fallv3.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: overlap
+  min_present: 0.35
+sources:
+  - dir: outputs/events/ur_fall_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: final_models/fall/model.onnx
+out_dir: outputs/verifier/fall_v3/study_ur_fall_overlap

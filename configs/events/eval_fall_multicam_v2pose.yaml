@@ -1,0 +1,32 @@
+# v2pose exam: same single-look protocol as the fallv3 exam it clones,
+# on the v2pose re-extraction of the same held-out videos (2026-09-04).
+# Fall verifier v2pose against the Montreal Multi-Cam test extraction, an acted-event
+# test set held under POLICY.md, rule 4, taking the single pre-declared test look for this
+# exam under the measurement discipline in POLICY.md, section 5. This is the 24 picked-view
+# surface, which final_models/fall/README.md records as hand-picked; the honest all-cameras
+# surface is scored by eval_fall_multicam_allcams_v2pose.yaml. The v2pose arm changes the
+# pose front-end alone, to the pose model of record, and its comparison against the fall
+# model of record is written up in research/fall-v2pose-comparison.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_v2pose.yaml
+#
+# window: must equal configs/events/train_fall_verifier_v3.yaml's window; the graph's
+# input geometry pins n_steps and the time scale pins window_s.
+# Multi-event videos (chute04, chute23) label through meta events_t; chute24 is the
+# staged confounder video (crouching plus moving-down, no fall), so a detection there
+# at any threshold is a headline false alarm, not a statistic.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v2pose/verifier.onnx
+out_dir: outputs/verifier/fall_v2pose/eval_multicam

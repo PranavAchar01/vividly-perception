@@ -1,0 +1,22 @@
+diff --git a/engine/solver/_solver.py b/engine/solver/_solver.py
+index 925e45f..269f73b 100644
+--- a/engine/solver/_solver.py
++++ b/engine/solver/_solver.py
+@@ -156,7 +156,7 @@ class BaseSolver(object):
+         if path.startswith('http'):
+             state = torch.hub.load_state_dict_from_url(path, map_location='cpu')
+         else:
+-            state = torch.load(path, map_location='cpu')
++            state = torch.load(path, map_location='cpu', weights_only=False)
+ 
+         # state['model'] = remove_module_prefix(state['model'])
+         self.load_state_dict(state)
+@@ -166,7 +166,7 @@ class BaseSolver(object):
+         if path.startswith('http'):
+             state = torch.hub.load_state_dict_from_url(path, map_location='cpu')
+         else:
+-            state = torch.load(path, map_location='cpu')
++            state = torch.load(path, map_location='cpu', weights_only=False)
+ 
+         module = dist_utils.de_parallel(self.model)
+ 

@@ -1,0 +1,481 @@
+{
+  "augment": null,
+  "calibration": {
+    "degenerate_fit": true,
+    "fitted_on": "train_holdout_val",
+    "note": "score = sigmoid(logit / temperature); monotonic in exact math, grid bounded [0.25, 8] against float saturation",
+    "temperature": 1.0
+  },
+  "channels": [
+    "vy",
+    "vx",
+    "h_rel",
+    "aspect",
+    "angle_norm",
+    "angle_valid",
+    "kpc",
+    "present",
+    "scene_n_tracks",
+    "scene_births"
+  ],
+  "checkpoint": {
+    "file": "verifier.pt",
+    "sha256": "90a8734c7b4238b66ed71843b352dda09c28c24b93152d05de0ee84ccb81a846"
+  },
+  "config": {
+    "holdout_fraction": 0.2,
+    "holdout_locations": [
+      "pat02",
+      "pat09"
+    ],
+    "model": {
+      "blocks": 3,
+      "dropout": 0.15,
+      "hidden": 64
+    },
+    "out_dir": "outputs/verifier/conv_finalB_v2c",
+    "schema_version": 1,
+    "sources": [
+      {
+        "dir": "outputs/events/wu_sahzu_tracks_v2c",
+        "locations": [
+          "pat01",
+          "pat02",
+          "pat04",
+          "pat05",
+          "pat09",
+          "pat11",
+          "pat13",
+          "pat14"
+        ]
+      },
+      {
+        "dir": "outputs/events/ajile12_neg_tracks_v1",
+        "force_label": 0
+      }
+    ],
+    "task": "convulsion",
+    "train": {
+      "batch": 256,
+      "device": "cpu",
+      "epochs": 60,
+      "lr": 0.001,
+      "pos_weight": "auto",
+      "seed": 20260826,
+      "weight_decay": 0.0001
+    },
+    "window": {
+      "min_present": 0.35,
+      "n_steps": 64,
+      "overlap_min_s": 4.0,
+      "policy": "overlap",
+      "scene_channels": true,
+      "stride_s": 3.0,
+      "window_s": 12.0
+    }
+  },
+  "disclosure": "Interim prototype event verifier, admitted under the acted-event carve-out of POLICY.md, rule 4. Trained on public acted-fall footage, on synthetic motion, or on both. Internal demonstration only; no number here is clinical detection performance. Real test numbers come only from the registry-enforced held-out sets.",
+  "geo_augment": null,
+  "git_commit": "fd2ec81",
+  "history": [
+    {
+      "epoch": 1,
+      "seconds": 0.8,
+      "train_loss": 0.38449,
+      "val_auc": 0.8891
+    },
+    {
+      "epoch": 2,
+      "seconds": 1.5,
+      "train_loss": 0.24219,
+      "val_auc": 0.86367
+    },
+    {
+      "epoch": 3,
+      "seconds": 2.2,
+      "train_loss": 0.17562,
+      "val_auc": 0.82716
+    },
+    {
+      "epoch": 4,
+      "seconds": 3.0,
+      "train_loss": 0.15042,
+      "val_auc": 0.79064
+    },
+    {
+      "epoch": 5,
+      "seconds": 3.7,
+      "train_loss": 0.12876,
+      "val_auc": 0.81949
+    },
+    {
+      "epoch": 6,
+      "seconds": 4.5,
+      "train_loss": 0.1241,
+      "val_auc": 0.79649
+    },
+    {
+      "epoch": 7,
+      "seconds": 5.2,
+      "train_loss": 0.11855,
+      "val_auc": 0.83196
+    },
+    {
+      "epoch": 8,
+      "seconds": 5.9,
+      "train_loss": 0.09959,
+      "val_auc": 0.81279
+    },
+    {
+      "epoch": 9,
+      "seconds": 6.7,
+      "train_loss": 0.07615,
+      "val_auc": 0.80984
+    },
+    {
+      "epoch": 10,
+      "seconds": 7.4,
+      "train_loss": 0.07416,
+      "val_auc": 0.83244
+    },
+    {
+      "epoch": 11,
+      "seconds": 8.1,
+      "train_loss": 0.06881,
+      "val_auc": 0.78137
+    },
+    {
+      "epoch": 12,
+      "seconds": 8.9,
+      "train_loss": 0.07167,
+      "val_auc": 0.79719
+    },
+    {
+      "epoch": 13,
+      "seconds": 9.6,
+      "train_loss": 0.05631,
+      "val_auc": 0.81097
+    },
+    {
+      "epoch": 14,
+      "seconds": 10.3,
+      "train_loss": 0.07161,
+      "val_auc": 0.82587
+    },
+    {
+      "epoch": 15,
+      "seconds": 11.1,
+      "train_loss": 0.04813,
+      "val_auc": 0.74561
+    },
+    {
+      "epoch": 16,
+      "seconds": 11.8,
+      "train_loss": 0.04519,
+      "val_auc": 0.82804
+    },
+    {
+      "epoch": 17,
+      "seconds": 12.5,
+      "train_loss": 0.03558,
+      "val_auc": 0.84028
+    },
+    {
+      "epoch": 18,
+      "seconds": 13.3,
+      "train_loss": 0.03245,
+      "val_auc": 0.7976
+    },
+    {
+      "epoch": 19,
+      "seconds": 14.0,
+      "train_loss": 0.04913,
+      "val_auc": 0.80576
+    },
+    {
+      "epoch": 20,
+      "seconds": 14.7,
+      "train_loss": 0.03822,
+      "val_auc": 0.79507
+    },
+    {
+      "epoch": 21,
+      "seconds": 15.5,
+      "train_loss": 0.03894,
+      "val_auc": 0.81244
+    },
+    {
+      "epoch": 22,
+      "seconds": 16.2,
+      "train_loss": 0.03355,
+      "val_auc": 0.80129
+    },
+    {
+      "epoch": 23,
+      "seconds": 16.9,
+      "train_loss": 0.02346,
+      "val_auc": 0.81178
+    },
+    {
+      "epoch": 24,
+      "seconds": 17.7,
+      "train_loss": 0.02444,
+      "val_auc": 0.83846
+    },
+    {
+      "epoch": 25,
+      "seconds": 18.4,
+      "train_loss": 0.02671,
+      "val_auc": 0.86688
+    },
+    {
+      "epoch": 26,
+      "seconds": 19.1,
+      "train_loss": 0.02099,
+      "val_auc": 0.81391
+    },
+    {
+      "epoch": 27,
+      "seconds": 19.9,
+      "train_loss": 0.02044,
+      "val_auc": 0.82228
+    },
+    {
+      "epoch": 28,
+      "seconds": 20.6,
+      "train_loss": 0.01992,
+      "val_auc": 0.80498
+    },
+    {
+      "epoch": 29,
+      "seconds": 21.3,
+      "train_loss": 0.01881,
+      "val_auc": 0.82723
+    },
+    {
+      "epoch": 30,
+      "seconds": 22.1,
+      "train_loss": 0.01877,
+      "val_auc": 0.82326
+    },
+    {
+      "epoch": 31,
+      "seconds": 22.8,
+      "train_loss": 0.01323,
+      "val_auc": 0.81176
+    },
+    {
+      "epoch": 32,
+      "seconds": 23.5,
+      "train_loss": 0.01157,
+      "val_auc": 0.83522
+    },
+    {
+      "epoch": 33,
+      "seconds": 24.3,
+      "train_loss": 0.01077,
+      "val_auc": 0.82789
+    },
+    {
+      "epoch": 34,
+      "seconds": 25.0,
+      "train_loss": 0.00934,
+      "val_auc": 0.81348
+    },
+    {
+      "epoch": 35,
+      "seconds": 25.7,
+      "train_loss": 0.01023,
+      "val_auc": 0.81957
+    },
+    {
+      "epoch": 36,
+      "seconds": 26.5,
+      "train_loss": 0.01064,
+      "val_auc": 0.82569
+    },
+    {
+      "epoch": 37,
+      "seconds": 27.2,
+      "train_loss": 0.01035,
+      "val_auc": 0.82549
+    },
+    {
+      "epoch": 38,
+      "seconds": 27.9,
+      "train_loss": 0.01237,
+      "val_auc": 0.82498
+    },
+    {
+      "epoch": 39,
+      "seconds": 28.7,
+      "train_loss": 0.00746,
+      "val_auc": 0.81912
+    },
+    {
+      "epoch": 40,
+      "seconds": 29.5,
+      "train_loss": 0.01187,
+      "val_auc": 0.81585
+    },
+    {
+      "epoch": 41,
+      "seconds": 30.2,
+      "train_loss": 0.01416,
+      "val_auc": 0.83436
+    },
+    {
+      "epoch": 42,
+      "seconds": 30.9,
+      "train_loss": 0.01635,
+      "val_auc": 0.81929
+    },
+    {
+      "epoch": 43,
+      "seconds": 31.7,
+      "train_loss": 0.00825,
+      "val_auc": 0.84056
+    },
+    {
+      "epoch": 44,
+      "seconds": 32.4,
+      "train_loss": 0.0069,
+      "val_auc": 0.82665
+    },
+    {
+      "epoch": 45,
+      "seconds": 33.1,
+      "train_loss": 0.00536,
+      "val_auc": 0.83006
+    },
+    {
+      "epoch": 46,
+      "seconds": 33.9,
+      "train_loss": 0.00761,
+      "val_auc": 0.842
+    },
+    {
+      "epoch": 47,
+      "seconds": 34.6,
+      "train_loss": 0.0057,
+      "val_auc": 0.81358
+    },
+    {
+      "epoch": 48,
+      "seconds": 35.4,
+      "train_loss": 0.00565,
+      "val_auc": 0.81997
+    },
+    {
+      "epoch": 49,
+      "seconds": 36.1,
+      "train_loss": 0.00483,
+      "val_auc": 0.80493
+    },
+    {
+      "epoch": 50,
+      "seconds": 36.9,
+      "train_loss": 0.00474,
+      "val_auc": 0.8422
+    },
+    {
+      "epoch": 51,
+      "seconds": 37.6,
+      "train_loss": 0.00426,
+      "val_auc": 0.84903
+    },
+    {
+      "epoch": 52,
+      "seconds": 38.3,
+      "train_loss": 0.00543,
+      "val_auc": 0.8469
+    },
+    {
+      "epoch": 53,
+      "seconds": 39.1,
+      "train_loss": 0.01481,
+      "val_auc": 0.76006
+    },
+    {
+      "epoch": 54,
+      "seconds": 39.9,
+      "train_loss": 0.07834,
+      "val_auc": 0.83459
+    },
+    {
+      "epoch": 55,
+      "seconds": 40.6,
+      "train_loss": 0.13085,
+      "val_auc": 0.84549
+    },
+    {
+      "epoch": 56,
+      "seconds": 41.4,
+      "train_loss": 0.08517,
+      "val_auc": 0.85919
+    },
+    {
+      "epoch": 57,
+      "seconds": 42.1,
+      "train_loss": 0.03284,
+      "val_auc": 0.85252
+    },
+    {
+      "epoch": 58,
+      "seconds": 42.9,
+      "train_loss": 0.02391,
+      "val_auc": 0.85836
+    },
+    {
+      "epoch": 59,
+      "seconds": 43.6,
+      "train_loss": 0.01747,
+      "val_auc": 0.8604
+    },
+    {
+      "epoch": 60,
+      "seconds": 44.4,
+      "train_loss": 0.01684,
+      "val_auc": 0.85558
+    }
+  ],
+  "n_negative": 5120,
+  "n_positive": 154,
+  "n_videos": 20,
+  "n_windows": 5274,
+  "negative_class_weighting": null,
+  "onnx": {
+    "file": "verifier.onnx",
+    "sha256": "978a1c3193937e894da9679213505472f5cdb1b8514e2b323e1b53ba6beae9bb"
+  },
+  "resolved_pos_weight": 10.0,
+  "task": "convulsion",
+  "val_auc_best": 0.8891,
+  "val_operating_points": [
+    {
+      "fn": 33,
+      "fp": 19,
+      "precision": 0.6607142857142857,
+      "recall": 0.5285714285714286,
+      "threshold": 0.5,
+      "tp": 37
+    },
+    {
+      "fn": 70,
+      "fp": 0,
+      "precision": null,
+      "recall": 0.0,
+      "threshold": 0.8,
+      "tp": 0
+    },
+    {
+      "fn": 70,
+      "fp": 0,
+      "precision": null,
+      "recall": 0.0,
+      "threshold": 0.9,
+      "tp": 0
+    }
+  ],
+  "vividly_weight_class": "prototype"
+}

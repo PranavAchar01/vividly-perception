@@ -1,0 +1,33 @@
+# CPU smoke configuration: it runs before any dataset download, in about 30 s.
+#
+#   uv run python scripts/eval/smoke_test.py --config configs/eval/smoke_mac.yaml
+#
+# Models are rtmlib zoo assets: eval-smoke provenance (body7), never shippable, because
+# their training mixture is not cleared for release. See POLICY.md, rule 8.
+schema_version: 1
+
+detector:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.zip
+  input_size: [320, 320]
+  device: cpu
+  score_thr: 0.3            # smoke wants clean overlays, not the mAP tail
+  name: rtmdet-nano-person-onnx
+  # No sha256 here: the 05d8511e token is the upstream .pth digest prefix recorded in
+  # configs/checkpoints/registry.yaml, and the cached digest of this ONNX SDK archive is
+  # not recorded anywhere in the tree.
+
+pose:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-body7-onnx
+  # Cached graph digest, recorded on final_models/joints/README.md.
+  sha256: 5c0a4bf67953e6d2ac43ce15e77dc9d5d354ae18430a47d2c5963a7bc5683e3c
+
+inputs:
+  image: tests/fixtures/sample.jpg
+  clip: tests/fixtures/sample_clip.mp4
+
+out_dir: outputs/smoke

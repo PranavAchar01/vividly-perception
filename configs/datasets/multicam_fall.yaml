@@ -1,0 +1,84 @@
+schema_version: 1
+name: multicam_fall
+display_name: Multiple Cameras Fall Dataset (DIRO Montreal)
+task: [detection]
+bucket: EVAL_ONLY
+status: available
+licensing:
+  license: none stated (citation-request only; all rights reserved by default)
+  license_url: http://www.iro.umontreal.ca/~labimage/Dataset/
+  license_verbatim: >
+    If you use this dataset and publish your work, be sure to correctly reference our
+    technical report as "E. Auvinet, C. Rougier, J. Meunier, A. St-Arnaud, J. Rousseau,
+    Multiple cameras fall dataset, Technical report 1350, DIRO - Universite de Montreal,
+    July 2010." (No licence text appears anywhere on the distribution page.)
+  license_conflict_note: >
+    The page states no licence at all: the set is openly distributed for research with a
+    citation request, but the default legal position is all rights reserved. Use inside a
+    for-profit as an engineering-only test set is CQ-22; the owner proceeded on
+    2026-08-26 pending counsel.
+  commercial_use: unreviewed
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-22-acted-fall-dataset-licenses]
+  # The owner's decision of 2026-08-26 is the mechanical clearance for test-only use:
+  # the counsel question stays open, and the gate stops refusing.
+  counsel_cleared_utc: "2026-08-26"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-26T07:00:00Z"
+    method: >
+      open http download; no click-through terms exist; citation request on the page;
+      accepted by the owner for test-only use
+    evidence_path: null
+  event_grant:
+    decision: interim-event-models
+    decided_utc: "2026-08-26"
+    decided_by: owner
+    role: test_only
+provenance:
+  collector: E. Auvinet, C. Rougier, J. Meunier, A. St-Arnaud, J. Rousseau (DIRO, UdeM)
+  imagery_source: >
+    volunteers performing staged falls and confounding events (sitting, crouching,
+    carrying objects) in a furnished room seen by 8 synchronized IP cameras; 24
+    scenarios, 23 with a fall plus confounders and 1 with confounders only, carrying
+    25 fall events because chute04 and chute23 stage two each
+  contains_real_people: true
+  simulated_medical_events: true
+  citation: >
+    E. Auvinet, C. Rougier, J. Meunier, A. St-Arnaud, J. Rousseau, "Multiple cameras
+    fall dataset", Technical report 1350, DIRO - Universite de Montreal, July 2010.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - http://www.iro.umontreal.ca/~labimage/Dataset/
+    - https://www.iro.umontreal.ca/~labimage/Dataset/dataset.zip
+  human_steps: []
+layout:
+  root: data/eval_only/multicam_fall
+  # val aliases test, which is the default split name of the eval manifest. Nothing
+  # trains here, so the alias contaminates nothing.
+  # The converter writes remuxed/chuteNN/camN.avi from the extracted upstream tree, and
+  # annotations/index.json beside the all-cameras surface annotations/index_allcams.json.
+  images: {test: remuxed, val: remuxed}
+  annotations: {test: annotations/index.json, val: annotations/index.json}
+ann_format: multicam_fall_intervals
+converter: vividly.data.convert.multicam_fall
+hashes_unavailable_reason: null
+counts: {scenarios: 24, cameras: 8, fall_scenarios: 23, confounder_only_scenarios: 1}
+derived_from: []
+notes: >
+  Held-out test set for the interim fall verifier, which never trains
+  (event_grant.role test_only). It is the second test leg beside ur_fall: it is
+  multi-view, and its confounder events, the fast sit-downs and crouches, are exactly
+  the false-alarm class the burn-in found. The zip holds per-scenario per-camera AVIs.
+  The fall frame intervals published in the technical report and erratum PDFs under
+  upstream/ are transcribed in vividly.data.convert.multicam_fall, which remuxes the
+  containers at the corrected rate into remuxed/ and writes annotations/index.json for
+  the 24 reference-camera views and annotations/index_allcams.json for the 192-view
+  surface. Both are materialised from upstream/dataset.zip at conversion time.
+files:
+  - {name: upstream/Erratum-MCF.pdf, size_bytes: 165945, sha256: 2dae9ff9447e4dabb527b5d2feeb87219352db61caa98eb40923317a6d841f58}
+  - {name: upstream/dataset.zip, size_bytes: 3782815282, sha256: 1cc0d0004c1624faec5e77539603cf681f1c32c1fc092bcc11a226dd633da974}
+  - {name: upstream/technicalReport.pdf, size_bytes: 3614722, sha256: 9b1c06951baba1045a7126d42d6a472a1ac318c62c4efd6e42730f46376771aa}

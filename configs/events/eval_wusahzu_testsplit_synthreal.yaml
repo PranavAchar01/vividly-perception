@@ -1,0 +1,26 @@
+# Three-variant comparison test: the synthreal variant against the six WU-SAHZU test
+# patients.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_wusahzu_testsplit_synthreal.yaml
+#
+# Identical test split for all three variants, which is the point of the comparison:
+# pat03/pat07/pat14 = convulsive PG (6 events, the class that matters),
+# pat04/pat09/pat11 = focal P (reported separately), plus all 3 non-seizure
+# recordings (they live on test patients). Train patients (pat01/02/05/13) are
+# excluded by the locations filter; disjointness is pinned by tests.
+# Window must equal the training window (12/3/64 overlap 4).
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v1
+    locations: [pat03, pat07, pat14, pat04, pat09, pat11]
+model:
+  onnx: outputs/verifier/convulsion_v1_synthreal/verifier.onnx
+out_dir: outputs/verifier/convulsion_v1_synthreal/eval_wusahzu_testsplit

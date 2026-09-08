@@ -1,0 +1,94 @@
+# Track-sequence extraction over Le2i, v2c generation. Interim fall-verifier training
+# data.
+#
+#   uv run python scripts/events/extract_track_sequences.py --config configs/events/extract_le2i_v2c.yaml
+#
+# The stack, stated here rather than cited. Detector: the eyes lane model of record,
+# checkpoint 345c30a5, ONNX 40262049, on the rtdetr_onnx backend at input 640x640 with a
+# score threshold of 0.3. Pose: the joints lane model of record, checkpoint a0a035fe,
+# ONNX 6ba96285, on the rtmlib backend at input size [192, 256] with colour order rgb.
+# Tracker: bytetrack at track_activation_threshold 0.4, high_conf_det_threshold 0.4,
+# lost_track_buffer 30 and minimum_iou_threshold 0.1. Track layer: baseline_window_s
+# 300.0, reap_after_s 30.0, kp_conf_min 0.3, ring_window_s 300.0 and
+# baseline_min_samples 30. Keypoints are emitted, so one extraction serves the fall lane,
+# which ignores them, and the seizure lane, which needs them. This operating point was
+# chosen on 2026-08-22 and has not moved since. The full digests are on the lane pages
+# under final_models/, and the threshold-calibration protocol is docs/CALIBRATION.md.
+# Both input_size keys below are written width then height, the order the replay wiring
+# uses; the "256x192" of the upstream RTMPose model name is height then width and is not
+# the form to copy. The two graphs this config loads, final_models/eyes/model.onnx and
+# final_models/joints/model.onnx, are Git LFS objects (.gitattributes), so run
+# `git lfs pull` on a fresh clone before this extraction.
+#
+# Two settings separate this generation from the previous one, and both were declared
+# before any extraction ran. First, the detector is the eyes lane model of record on the
+# rtdetr_onnx backend, in place of the upstream rtmdet-m person release, token 235e8209;
+# the backend parity gate compared the new backend against the grading path on 50 frames
+# and returned bit-exact agreement, 0.000000 pixel and 0.000e+00 score differences over
+# 50 of 50 frames (scripts/eval/backend_parity_rtdetr.py, commit 38309de). Second, the
+# pose colour order is rgb, worth 0.0277 keypoint AP on the deployed path; it is a
+# runner-side key (commit d151d17) and the live and demo pipeline configurations are
+# fenced against setting it by tests/test_pipeline_color_order.py. Tracker, track layer,
+# rules, keypoint emission and dataset scope are unchanged.
+#
+# The run replays the 130 annotated Le2i videos, that is Coffee_room_01 and 02 plus
+# Home_01 and 02, 99 fall and 31 no-fall, and writes per-track observation sequences
+# beside the ground-truth fall intervals. The verifier trains on the pipeline's own view
+# of these videos and never on the ground-truth boxes, which the live system does not
+# have.
+#
+# annotated_only stays true. The unannotated Lecture_room and Office subsets contain
+# unlabelled falls. The measured distribution is 190 videos, of which 130 are annotated
+# and 99 are falls; the fall count of the unannotated pool was never measured, as
+# configs/datasets/le2i_fdd.yaml records, so admitting those subsets would poison the
+# negative class.
+#
+# Domain note that travels with the extraction. Le2i frames are 320x240 eye-level
+# perspective views, so the interim training domain is not the deploy domain, and the
+# models it trains are interim prototypes to be replaced when clinical footage exists,
+# under the carve-out in POLICY.md. tracker.frame_rate and tracks.fps are filled per video
+# from its own container frame rate, which mixes 24.0003 and 25.0.
+#
+# out_dir is a gitignored run directory under outputs/: a build output, not a file in
+# version control.
+schema_version: 1
+dataset: le2i_fdd
+out_dir: outputs/events/le2i_tracks_v2c
+emit_keypoints: true
+annotated_only: true
+
+pipeline:
+  detector:
+    backend: rtdetr_onnx
+    # committed copy of the graph the recorded extraction used, sha256 4026204967aa
+    onnx: final_models/eyes/model.onnx
+    input_size: [640, 640]
+    device: cpu               # rtdetr_onnx refuses mps; the CPU provider is the parity-proven path
+    score_thr: 0.3
+    name: rtv4-s-person-v2-onnx-345c30a5
+  pose:
+    backend: rtmlib
+    # committed copy of the graph the recorded extraction used, sha256 6ba9628506a8
+    onnx: final_models/joints/model.onnx
+    input_size: [192, 256]
+    device: cpu
+    color_order: rgb        # the second of the two settings declared in the header
+    name: rtmpose-m-person-v2-onnx-6ba96285
+  tracker:
+    backend: bytetrack
+    track_activation_threshold: 0.4
+    high_conf_det_threshold: 0.4
+    lost_track_buffer: 30
+    minimum_iou_threshold: 0.1
+  tracks:
+    # The track-layer half of the operating point chosen on 2026-08-22, recorded
+    # with the other settings common to the extraction generations in
+    # final_models/fall/README.md. The values stay PROVISIONAL (the acute-event
+    # rule set, POLICY.md; docs/CALIBRATION.md) until that protocol replaces them.
+    baseline_window_s: 300.0
+    reap_after_s: 30.0
+    kp_conf_min: 0.3
+    ring_window_s: 300.0
+    baseline_min_samples: 30
+  rules_config: configs/pipeline/rules.yaml
+jpeg_quality: 30

@@ -1,0 +1,141 @@
+schema_version: 1
+name: wu_sahzu_emu
+display_name: WU-SAHZU-EMU-Video (VSViG epilepsy monitoring unit recordings)
+task: [detection]
+bucket: EVAL_ONLY
+status: available
+licensing:
+  license: Apache-2.0 (per the Hugging Face dataset card)
+  license_url: https://huggingface.co/datasets/xuyankun/WU-SAHZU-EMU-Video
+  license_verbatim: >
+    license: apache-2.0 (dataset card metadata). Released with VSViG (ECCV 2024,
+    arXiv:2311.14775) by the Second Affiliated Hospital of Zhejiang University /
+    Westlake University group; the card states data were collected under hospital
+    ethics approval with patient consent and faces are masked.
+  license_conflict_note: >
+    The licence itself is permissive, but this is real clinical footage of real
+    patients' seizures. Whether an Apache-2.0 grant by the publishing group is a
+    sufficient basis for any commercial use of models influenced by this data is a
+    counsel question (CQ-23), flagged and not absorbed. The current role is an
+    engineering-only held-out test set that trains nothing; any training use is a
+    separate owner decision, executed as a new disjoint-patient TRAIN_PROTOTYPE entry,
+    and nothing touched by this data ships commercially without counsel sign-off.
+  commercial_use: conflicting
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-23-clinical-emu-video-use]
+  counsel_cleared_utc: "2026-08-26"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-26T08:00:00Z"
+    method: >
+      ungated public download from Hugging Face (no click-through; licence declared in
+      the dataset card metadata); the owner authorised the download and test-only use on
+      2026-08-26
+    evidence_path: null
+  event_grant:
+    decision: wu-sahzu-exam-allocation
+    decided_utc: "2026-08-26"
+    decided_by: owner
+    role: test_only
+provenance:
+  collector: >
+    Yankun Xu et al. (Westlake University / Zhejiang University; VSViG project),
+    recorded at the Second Affiliated Hospital of Zhejiang University School of
+    Medicine EMU
+  imagery_source: >
+    real epilepsy-monitoring-unit recordings: 14 patients, 33 expert-annotated seizure
+    events plus non-seizure recordings, a single wall-mounted or ceiling-mounted Bosch
+    camera, 1080p at 30 fps, hospital beds with occlusion from blankets, pillows and
+    visitors; patient faces are masked upstream; per-event EEG onset and clinical onset
+    timestamps come from epileptologists
+  contains_real_people: true
+  simulated_medical_events: false
+  real_medical_events: true
+  citation: >
+    Y. Xu, J. Wang, et al., "VSViG: Real-time Video-based Seizure Detection via
+    Skeleton-based Spatiotemporal ViG", ECCV 2024. arXiv:2311.14775. Dataset:
+    huggingface.co/datasets/xuyankun/WU-SAHZU-EMU-Video.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://huggingface.co/datasets/xuyankun/WU-SAHZU-EMU-Video
+  human_steps: []
+layout:
+  root: data/eval_only/wu_sahzu_emu/upstream
+  # val aliases test, the same as ur_fall: nothing trains here, so the alias is inert.
+  images: {test: dataset, val: dataset}
+  annotations: {test: annotations, val: annotations}
+ann_format: wu_sahzu_label_xlsx
+converter: vividly.data.convert.wu_sahzu
+hashes_unavailable_reason: null
+# videos is the 36 the converter indexes: 33 labelled seizure videos plus 3 non-seizure
+# recordings. dataset/pat05/Sz4PG.mp4 ships with no Label.xlsx row, so it is excluded
+# entirely: it is unusable as a positive, having no onset, and unsafe as a negative,
+# because it is named as a seizure recording.
+counts: {patients: 14, seizures: 33, convulsive_seizures: 14, focal_seizures: 19, videos: 36}
+derived_from: []
+notes: >
+  Exam-side patient pool for the convulsion verifier: the only real clinical seizure
+  footage in this repository, and the source of every seizure exam surface. The exam of
+  record is the 16-video, six-patient testsplit declared in
+  configs/events/eval_wusahzu_testsplit_v2real.yaml, where convulsion_v2_real, ONNX
+  07c399be, scores window AUC 0.69841 (final_models/seizure/README.md). The four focal
+  patients kept out of both training and the testsplit are measured as the E1 focal exam
+  (configs/events/rot_eval_E1_finalB_v2c.yaml) and as the unallocated supplement
+  (configs/events/eval_wusahzu_unallocated_v2.yaml). Seizure types are recorded per
+  patient. PG (focal-to-generalized tonic-clonic, 7 patients, 14 events) is the
+  convulsive class the verifier targets; P (focal, 7 patients, 19 events) often shows
+  subtle or no convulsive motion and is reported separately, never folded into the
+  headline number.
+  The irregularities in Label.xlsx are recorded in the converter docstring: onset cells
+  are Excel day-fractions and must be multiplied by 86400; PatID and type are
+  forward-filled merged cells; EEG onset precedes clinical onset; there are no end
+  times, so the paper's heuristic of under 2 minutes applies. Recordings range from 80 s
+  to 61 min; the converter re-encodes and cuts long files around clinical onset into
+  clips/, recording cut_start_s, and never modifies upstream bytes.
+  The training split granted later is a separate registry entry over patients disjoint
+  from this one, configs/datasets/wu_sahzu_emu_trainsplit.yaml, so that the
+  machine-enforced train and test exclusivity holds.
+files:
+  - {name: .gitattributes, size_bytes: 4508, sha256: 245c55f4cae7773b81d63a5538e5bfc6f827ff5b86dcbedec9a996133e1196d5}
+  - {name: README.md, size_bytes: 1288, sha256: d6fc1a4421522c257a90e637a076a2c5467070678af375cf87891966313f38eb}
+  - {name: dataset/Label.xlsx, size_bytes: 10357, sha256: 488e6babeb33e78fd05803e2eb094942c43b1212649310b5b174ef0112fbab26}
+  - {name: dataset/pat01/Sz1PG.mp4, size_bytes: 4760000266, sha256: 3b6dfab8e006cecb1b305ab4ff701f184ed1e6699cc7263aad19bd4d8cf16162}
+  - {name: dataset/pat01/Sz2PG.mp4, size_bytes: 1130965576, sha256: 819634aac6b8a6fe5779b2da786b6b5697524eee761acccd270c4968af135c67}
+  - {name: dataset/pat02/Sz1PG.mp4, size_bytes: 4020701209, sha256: b949a39411ff30ec7f649bee2b6213b7078ca3f642786cd1801b669989083a75}
+  - {name: dataset/pat02/Sz2PG.mp4, size_bytes: 904621037, sha256: 0a56233f5635ff626ca5b64b4b6316939987fa02ffca64d29e1f3b4a2a265848}
+  - {name: dataset/pat03/Sz1PG.mp4, size_bytes: 108001271, sha256: 5ea697a17918a2c01eefd350d1e5f792415467f3a6ab1f51580f99eb33925316}
+  - {name: dataset/pat03/Sz2PG.mp4, size_bytes: 112081118, sha256: a019140861b76e0b80d0290e87dcf4fdc2deeb935698952f2eb1be04dcecf9fe}
+  - {name: dataset/pat03/free.mp4, size_bytes: 887026876, sha256: 806c278570ea00d6e845f3fc0a57761731d8a0c8ca0140cde28ce0d82135db2c}
+  - {name: dataset/pat04/Sz1P.mp4, size_bytes: 84453116, sha256: e413399c9ecb9e3d573aef6818d76d30620f6feab2e3e266a44c65d42636c62e}
+  - {name: dataset/pat04/free.mp4, size_bytes: 2387285236, sha256: 24073d0258091ff36aa25d0491f2a3c05118e8c37ff3f4d345996400c14c7a06}
+  - {name: dataset/pat04/no-Sz2P.mp4, size_bytes: 954424425, sha256: fe6234a3b13f71158c29cb47418a960bad5ba4b8c2cb4980367506f86018731e}
+  - {name: dataset/pat05/Sz1PG.mp4, size_bytes: 157067632, sha256: 0e5dea7f38eb4ba7b58b4c738b0d88deda4f43c53eb88a98b949c5574070e5a3}
+  - {name: dataset/pat05/Sz2PG.mp4, size_bytes: 127141536, sha256: c166de173fcccb129de8dc3e2a82c5c57813451dad78b6d666e99288b4a0371f}
+  - {name: dataset/pat05/Sz3PG.mp4, size_bytes: 114354919, sha256: ecd5d59b456b8aa0a0942398474502054c3d0719027bce95a3bdfbfcb9c5f193}
+  - {name: dataset/pat05/Sz4PG.mp4, size_bytes: 108319828, sha256: b06f17c2bbc92ea585eb9fe9c500b70d94bda796f23900d0caed1a60056bbad3}
+  - {name: dataset/pat06/Sz1P.mp4, size_bytes: 869352129, sha256: c66e8e8a9abc6e489305abcc69dc75de2360b1d02b64491c605cd9b84c1697f0}
+  - {name: dataset/pat06/Sz2P.mp4, size_bytes: 658843414, sha256: 66fb8e93c7bb585fe0113f7d166cf09b48a21629ce4243381b48551f9063efb4}
+  - {name: dataset/pat06/Sz3P.mp4, size_bytes: 595649416, sha256: 682cda9cd68a42537a0a1163303d933f71864b27f7ecd76eecf98ef67e8df8b6}
+  - {name: dataset/pat07/Sz1PG.mp4, size_bytes: 536439734, sha256: da573d48dc4b2fd143c7e59763e1d98d397a95d3adc54e30c5a4b081db68d0e7}
+  - {name: dataset/pat07/Sz2PG.mp4, size_bytes: 868907269, sha256: 1aa5f1e007bc15eed9f8ea991ee3128bccc11636fe7f68707e01e1a497ffc4f4}
+  - {name: dataset/pat08/Sz1P.mp4, size_bytes: 2368141150, sha256: ed268b4d07745a3449dd83d4b574924ad08b5dfffa5af2d6e3dafbdc6d260fc1}
+  - {name: dataset/pat08/Sz2P.mp4, size_bytes: 1049453738, sha256: dd39eebe59cc3ad6f55cdef53053127cb36f63e00e05df4ccb14d895b392dda8}
+  - {name: dataset/pat08/Sz3P.mp4, size_bytes: 490089208, sha256: 2c369b78f56bbcff243380fa415aaf625be76767110ab88f35a0b1c3ef27166e}
+  - {name: dataset/pat09/Sz1P.mp4, size_bytes: 397454823, sha256: e7de6086e9f0a575d83cf1469a52e4aa3f5189e38ed8e31fe30f8b92d054f694}
+  - {name: dataset/pat09/Sz2P.mp4, size_bytes: 365893666, sha256: c208b32c4c5dec94b750cf88972bdc1e3367d65606e8c3d856c0a0f0dd8d30e4}
+  - {name: dataset/pat09/Sz3P.mp4, size_bytes: 261503930, sha256: b7db9cc51f79a2432fbd223ee9bf6ea586082386258408ab6cefd63e90617981}
+  - {name: dataset/pat10/Sz1P.mp4, size_bytes: 42984210, sha256: 1105f64e01e9a0ef5c2446e130d49f7955986ff3698b034aa0ed325b0d7702ce}
+  - {name: dataset/pat10/Sz2P.mp4, size_bytes: 36392136, sha256: 41644d9940a5e15e0b49ecedc3277adc78eabb6c32fcfdb5802694aa107c36ce}
+  - {name: dataset/pat11/Sz1P.mp4, size_bytes: 385890933, sha256: d9263f1c8af67d1932b1f49a10b15a473587507225883fe44003a7c1d98c6295}
+  - {name: dataset/pat11/Sz2P.mp4, size_bytes: 323023040, sha256: 73105b462c2ebea8a07bb3d60baa80e5179fdeb032d49cb677b8c423b10cb274}
+  - {name: dataset/pat11/Sz3P.mp4, size_bytes: 136321538, sha256: 8a5b479439ee3b33402732bdf02807f6ccbe61c3d98a59f128e4db59de605036}
+  - {name: dataset/pat12/Sz1P.mp4, size_bytes: 484474900, sha256: 092ca70fe46c02c3398cb2e2d1ddb084b0d09706d44ade61fba7eea68e28cc07}
+  - {name: dataset/pat12/Sz2P.mp4, size_bytes: 70005564, sha256: fbaafd24e7050acc95822c5957a295036281875a28656f6d1b85adaaa116da1d}
+  - {name: dataset/pat12/Sz3P.mp4, size_bytes: 136256191, sha256: 221bbe721a724705e1a6a62c4e9a24d8bdb31c35bd215df4239b999745384e9f}
+  - {name: dataset/pat12/Sz4P.mp4, size_bytes: 236160692, sha256: f81c4ad2e270817c58fc499b3f6c759c2a9a0bdbf0f2f5fc98ba0e92697278b8}
+  - {name: dataset/pat13/Sz1PG.mp4, size_bytes: 231140218, sha256: 2a6d9134c318a06a36121e95a211606949ce0f8cbd727288f894cf6a7e9bf00b}
+  - {name: dataset/pat14/Sz1PG.mp4, size_bytes: 181788158, sha256: 77ae938ded94361eda1e30607917b9d14314e658b578b391882701cf3eeec0d3}
+  - {name: dataset/pat14/Sz2PG.mp4, size_bytes: 187173601, sha256: 058e9f4e6b8a0385dab50a44b118c949fda7a5f84ea70a328d22243419fddeaf}

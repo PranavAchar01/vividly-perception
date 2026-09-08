@@ -1,0 +1,232 @@
+# Vendored-trainer pins for the v2 detector comparison (step-1 build, 2026-08-31).
+#
+# Nothing under third_party/ is imported by src/vividly. scripts/pod/setup_pod.sh
+# clones, SHA-verifies and patches the two detector repositories below and installs
+# their wrapper configurations from third_party/configs/. The DINOv2 teacher tree is
+# fetched, pinned and licence-gated by scripts/pod/eyes_chain.sh in its B2_FETCH_TEACHER
+# stage, which also installs rtv4_s_person_v2_dinov2t.yml, and the torchreid entry is
+# cloned by hand under the install rule in its own entry.
+#
+# Provenance: three full repository audits on 2026-08-31 covering D-FINE, DEIM and
+# RT-DETRv4. Their surviving record is research/v2-training-sources.md, which carries
+# these pins and licence findings under its verification tags and records that the audit
+# clones are not carried in this repository.
+schema_version: 1
+
+repos:
+  # Detector trainers only. The joints lane trains in a vendored pose repository that
+  # setup_pod.sh does not clone; its pin of record is 759b39c1, recorded in TRAINING.md
+  # and in the provenance card of third_party/configs/rtmpose_m_person_v2_ft.py.
+  deim:
+    role: Model A trainer, the DEIM recipe on the D-FINE-S architecture (CVPR 2025)
+    url: https://github.com/Intellindust-AI-Lab/DEIM
+    pin: 09d35d53d39ee3145a1e61e3a989b28b9468d1dd   # main HEAD; repo has 0 tags
+    license: Apache-2.0
+    license_notes: >
+      LICENSE body is verbatim Apache-2.0 with a 7-line Intellindust copyright header
+      prepended 2025-07-21 (commit bc11dfe; no terms altered). GitHub's API reports
+      NOASSERTION, which is a detector artifact of that header, not a licence change.
+      DEIMv2 is a separate repository (Intellindust-AI-Lab/DEIMv2), relicensed as
+      non-commercial on 2026-08-24 (its LICENSE.md 3 forbids commercial use and its 5
+      extends that to weights) and it layers DINOv3 terms on top, so it is barred here,
+      and a pre-2026-08-24 Apache-era DEIMv2 clone must never be laundered in either.
+      This DEIM pin contains zero DEIMv2 code (verified per-commit).
+    papers: [arXiv:2412.04234 DEIM, arXiv:2410.13842 D-FINE]
+    self_contained: true   # vendors the full D-FINE model code; the D-FINE repo is not cloned
+    patches:
+      - patches/deim/0001-torchvision-021-transform-hooks.patch   # required: hard blocker on torchvision >= 0.21 (torch 2.7 pairs 0.22); upstream PR #47 unmerged, repo effectively frozen (2 PRs merged ever)
+      - patches/deim/0002-export-onnx-batch1-opset17.patch        # dummy batch 32->1 (host-RAM waste; batch axis is dynamic), opset 16->17 (LayerNorm; D-FINE #153/#302), weights_only=False on the checkpoint load
+      - patches/deim/0003-solver-torch-load-weights-only.patch    # torch>=2.6 flipped weights_only default; released ckpt contents unverified until first download
+
+  rtdetrv4:
+    role: Model B challenger, RT-DETRv4-S with the DINOv3 teacher disabled (ECCV 2026)
+    url: https://github.com/RT-DETRs/RT-DETRv4
+    pin: 55fefaaed7efe2a5f72d0a18fd4e05965e35c292   # main HEAD; repo has 0 tags, 0 releases
+    license: Apache-2.0   # stock unmodified text, single LICENSE for the whole tree
+    license_notes: >
+      The DINOv3 teacher is used only at training time and is fully disabled by
+      config (this fork omits the teacher_model block; the rest of the include chain
+      carries no such key), so no DINOv3 weights are downloaded and Meta's click-wrap
+      is never accepted. Counsel item C-1 stands: the released RT-DETRv4-S weights
+      used as the initialisation were trained with a DINOv3 teacher (proved by the
+      shipped training log's live loss_distill), even though no DINOv3 tensor is inside
+      the checkpoint (teacher explicitly skipped at serialization). Whether that
+      inheritance matters is a question for counsel, not one this record resolves.
+      Fallback if counsel says no: the same repo reproduces DEIM/D-FINE with no
+      teacher at all.
+    papers: [arXiv:2510.25257 RT-DETRv4]
+    maturity_warning: >
+      Treat as frozen upstream. As read on 2026-08-31: 11 commits total, zero
+      maintainer code commits since release (all later fixes are external PRs),
+      47% of open issues are basic training breakage. The torchvision >= 0.21 fix
+      is merged at this pin (community PR #7), so no transform patch is needed here.
+    patches:
+      - patches/rtdetrv4/0001-export-onnx-batch1-opset17.patch
+      - patches/rtdetrv4/0002-solver-torch-load-weights-only.patch
+      - patches/rtdetrv4/0003-profiler-stats-on-cpu.patch                  # the startup FLOPs profile deep-copies the CUDA model but builds its dummy input on CPU, so it dies on a single-GPU run; profile a CPU copy instead
+      - patches/rtdetrv4/0004-eval-pos-embed-buffer.patch                  # register the evaluation position embeddings as non-persistent buffers so they follow the model to the device and stay out of the state dict
+      - patches/rtdetrv4/0005-export-legacy-torchscript-exporter.patch     # torch >= 2.9 defaults to the dynamo exporter, which needs onnxscript and emits a different graph family; pin the legacy TorchScript exporter at opset 17
+
+  torchreid:
+    # Added 2026-09-07 for re-ID Phase A. PyPI `torchreid` is a different,
+    # ancient package (0.2.5, torchreid.reid.* tree); the real 1.4.0 exists only
+    # in this repo. Install rule (proven in the Phase A build's scratch venv,
+    # numpy 2.4.x, rank_cy compiles): clone at the pin, then
+    #   uv pip install --no-deps --no-build-isolation <clone-dir>
+    # with cython + numpy already in the target env. Plain `pip install git+...`
+    # fails: build isolation resolves numpy 2.x mid-build and rank_cy.c's
+    # _PyArray_Descr.subarray use breaks against it there.
+    role: re-ID Phase A trainer library (OSNet builder, VideoDataManager, engines)
+    url: https://github.com/KaiyangZhou/deep-person-reid.git
+    pin: f8cd150fdf77e8d9e1ed143b7f308c2c609ded50   # recorded at first Phase A contact 2026-09-07; the ImageNet-only osnet_x1_0 init (pretrained=True, no re-ID dataset provenance) is the clean start Phase A requires
+    license: MIT
+    papers: [arXiv:1905.00953 OSNet, arXiv:1910.10093 torchreid]
+    patches: []
+
+  dinov2:
+    # Added 2026-09-05 for the gated eyes arm B2-DINOv2T. Every claim below is
+    # sourced in research/eyes-dinov2-teacher-arm.md, section 5 (the loader
+    # situation), which cites the upstream source files it read.
+    role: >
+      B2-DINOv2T teacher architecture only, and only at training time. RT-DETRv4's
+      DINOv2TeacherModel loads it with torch.hub.load(path, name, source='local')
+      in its __init__ (engine/rtv4/dinov2_teacher.py), so the repo must physically be
+      on disk for its hubconf.py. No src/vividly code imports it, no vividly wheel
+      depends on it, and no DINOv2 tensor is ever serialized into a checkpoint produced
+      here (the teacher is skipped at save time by the solver's state_dict method,
+      engine/solver/det_solver.py).
+      It is not needed to evaluate a B2 checkpoint: --test-only routes to solver.val(),
+      which never builds a teacher (the --test-only branch in train.py).
+    url: https://github.com/facebookresearch/dinov2
+    pin: 7764ea0f912e53c92e82eb78a2a1631e92725fc8   # recorded at first clone (B2_FETCH_TEACHER printed this default-branch HEAD, 2026-09-06T06:20Z; the stage's licence gate re-reads LICENSE at this tree before proceeding)
+    # scripts/pod/eyes_chain.sh B2_FETCH_TEACHER prints the SHA it actually checked
+    # out and refuses to proceed while this key holds no pin, unless
+    # ALLOW_UNPINNED_TEACHER=1 is set deliberately.
+    license: Apache-2.0
+    license_notes: >
+      DINOv2 code and weights are both Apache-2.0, recorded in the backbone policy
+      section of research/v2-training-stack.md ("DINOv2 and Perception Encoder
+      (PE-Spatial) are the approved foundation trunks - DINOv2 Apache-2.0 [V]")
+      and in the licence ledger table of the same document
+      ("| DINOv2 | backbone/embeddings | Apache-2.0 | [V] raw |"), both [V]-tagged
+      against the raw LICENSE. Unlike DINOv3 there is no click-wrap and no separate
+      weights licence, so this arm accepts no new terms.
+      This is a gate, not a formality: the original 2023-04 release was CC-BY-NC-4.0
+      and was relicensed Apache-2.0 in 2023-06. The pin must be at or after that
+      relicense, and the LICENSE file in the checked-out tree must be read and
+      confirmed to say Apache-2.0 before any training run (house rule;
+      FETCH_TEACHER greps it).
+      Separately barred: the DINOv2 *biology* variants, which are CC BY-NC /
+      FAIR Noncommercial per the dinov2 README
+      (research/reid-scale-literature.md, section 7.3 on licensing).
+      Counsel item C-1 is unchanged in shape by this arm: the run would still be
+      training with a foundation teacher, now an Apache-2.0 one with no click-wrap,
+      instead of inheriting DINOv3 lineage silently through the rtv4_s_coco.pth init.
+    papers: [arXiv:2304.07193 DINOv2]
+    patches: []   # none expected; record any that become necessary
+
+checkpoints:
+  # COCO-lineage rule (POLICY.md, rule 8 on checkpoint provenance, plus the Objects365
+  # restriction): for the two detector trainers below, only checkpoints whose full
+  # lineage is ImageNet-backbone -> COCO train2017 are admitted. Every *_obj365 /
+  # *_obj2coco artifact in either family is barred (D-FINE's own README note:
+  # Objects365-derived checkpoints "should not be assumed to be commercially
+  # cleared"). The joints lane's initialisation and the frozen DINOv2 teacher fall
+  # outside that rule and are admitted on their own recorded provenance instead:
+  # final_models/joints/README.md, where the body7 ancestry is flagged for counsel
+  # rather than absorbed, and repos.dinov2 below. Google Drive hosting is not
+  # content-addressed: setup_pod.sh records each file's sha256 into the pod's
+  # ckpt/MANIFEST.sha256 (the pod layout described in TRAINING.md) on first download
+  # and refuses a mismatch on any later one.
+  deim_dfine_s_coco:
+    model: DEIM-D-FINE-S (10M params)
+    ap_coco_val: 49.0
+    url: https://drive.google.com/file/d/1tB8gVJNrfb6dhFvoHJECKOF5VpkthhfC/view?usp=drive_link
+    lineage: ImageNet (PPHGNetV2_B0_stage1, PaddleDetection-derived) -> COCO train2017 via DEIM recipe. No Objects365.
+    sha256: a089c9eb798f8a0322e05f757fe8e8188eee34aa578788a35ec253bcec8a6b38   # read from the checkpoint manifest of the pod backup, also recorded on final_models/eyes/README.md
+  rtv4_s_coco:
+    model: RT-DETRv4-S (10.43M params)
+    ap_coco_val: 49.8   # README and shipped training log agree; the arXiv abstract says 49.7, so quote 49.8, which is the reproduced number
+    url: https://drive.google.com/file/d/1jDAVxblqRPEWed7Hxm6GwcEl7zn72U6z
+    lineage: ImageNet (PPHGNetV2_B0_stage1) -> COCO train2017 via RT-DETRv4 recipe with a DINOv3-ViT-B/16 teacher (counsel item C-1). No Objects365 (configs/rtv4/ has no objects365 lane; the log's 118,272 images per epoch is COCO train2017 with the final partial batch dropped, 118,287 images being 3,696 full batches of 32, and nowhere near an Objects365 stage).
+    sha256: 238a3f6537bf3b75b55e73f91f9d4cec8d21259b4908b3f21896f3e038b5a3ee   # read from the checkpoint manifest of the pod backup, also recorded on final_models/eyes/README.md
+  dinov2_vitb14:
+    # Added 2026-09-05 for the gated eyes arm B2-DINOv2T. Frozen training-time
+    # teacher; never inferred at deployment, never serialized into a shipped weight.
+    model: DINOv2 ViT-B/14 (86M params, embed_dim 768)
+    role: frozen foundation-feature teacher for RT-DETRv4 distillation (arm B2-DINOv2T)
+    # 768 is exactly what HybridEncoder.distill_teacher_dim must equal; the channel check
+    # in the criterion's distillation loss raises on any mismatch
+    # (engine/rtv4/rtv4_criterion.py). Set both in
+    # third_party/configs/rtv4_s_person_v2_dinov2t.yml.
+    teacher_feature_dim: 768
+    url: https://dl.fbaipublicfiles.com/dinov2/dinov2_vitb14/dinov2_vitb14_pretrain.pth
+    url_status: >
+      Verified 2026-09-06T06:30Z: B2_FETCH_TEACHER curled this exact URL on the pod
+      (200, full file), the sha256 below was recorded from that download, and the
+      load-clean assertion passed (missing_keys empty), so it is the original
+      facebookresearch state dict, not the HF port. (Previously recorded as
+      unverified, 2026-09-05, written from the README's download pattern.)
+    lineage: LVD-142M self-supervised pretrain. No labels, no COCO, no Objects365.
+    license: Apache-2.0   # see repos.dinov2 license_notes; research/v2-training-stack.md, backbone policy and licence ledger
+    sha256: 0b8b82f85de91b424aded121c7e1dcc2b7bc6d0adeea651bf73a13307fad8c73   # recorded at first download 2026-09-06T06:30:39Z (mark B2_TEACHER_SHA256_0b8b82f85de9; licence gate read Apache at pin 7764ea0f same run)
+    load_notes: >
+      It must be the original facebookresearch state dict (keys patch_embed.* /
+      blocks.N.*), not the transformers port `facebook/dinov2-base`
+      (embeddings.patch_embeddings.projection.weight / encoder.layer.N.*).
+      The load_state_dict call in DINOv2TeacherModel.__init__
+      (engine/rtv4/dinov2_teacher.py) passes strict=False, so the wrong key
+      namespace loads zero tensors, logs the miss at INFO where nothing surfaces it,
+      raises nothing, and trains against a random teacher for 13 h. A wrong model
+      size does fail loudly (embed_dim != 768 -> criterion raises one step later),
+      so this is the only silent failure mode and the only guard against it is the
+      launch-time assertion. The chain must assert that load_state_dict's missing_keys
+      is empty (eyes_chain.sh assert_teacher_loads_clean).
+    config_keys:
+      # As written in third_party/configs/rtv4_s_person_v2_dinov2t.yml. The schema is
+      # DINOv2TeacherModel.__init__ exactly (dinov2_teacher.py); the config loader in
+      # yaml_config.py pops `type` and splats the rest as **kwargs, so no other key is
+      # legal.
+      teacher_model:
+        type: DINOv2TeacherModel
+        # Two further keys are required and are not spelled here: dinov2_repo_path and
+        # weights_path, both set to the teacher directory of the pod layout. The literal
+        # values are in third_party/configs/rtv4_s_person_v2_dinov2t.yml.
+        model_name: dinov2_vitb14          # the default is dinov2_vitl14_reg (1024-dim), so this override is required
+        patch_size: 14
+        target_downsample_factor: 32       # 640 -> 280 -> 20x20, an exact stride-32 student match
+  hgnetv2_b0_stage1:
+    note: >
+      ImageNet stage-1 backbone both repos auto-download when training from scratch.
+      It is not fetched in this flow, because the -t fine-tune path sets
+      pretrained=False in both repos. It is recorded here because a config mistake
+      would trigger a silent fetch:
+      https://github.com/Peterande/storage/releases/download/dfinev1.0/PPHGNetV2_B0_stage1.pth
+
+contingencies:
+  # Prepared fixes deliberately not applied (minimal-delta rule: the comparison
+  # runs the papers' recipes as published; patch on symptom, not on speculation).
+  giou_oom:
+    symptom: CUDA OOM inside loss_boxes / generalized_box_iou (RT-DETRv4 issue #22)
+    analysis: >
+      All six torch.diag(pairwise) sites per criterion are aligned matched-pair
+      computations; at this ground-truth density (~15 persons/img, bs32, dn groups
+      included) the transient is 0.5 to 1 GB on a 32 GB card, so it is not expected to
+      fire. If it fires, replace diag(generalized_box_iou(a, b)) with an element-wise
+      GIoU (mathematically identical for aligned pairs) at the reported site first.
+  ddf_batch_scale:
+    finding: >
+      Both criteria, deim_criterion.py and rtv4_criterion.py, hardcode
+      batch_scale = 8/N "to avoid the influence of batch size per GPU".
+      Checked 2026-08-31: num_pos
+      and num_neg both carry sqrt(batch_scale) and the DDF loss is their convex
+      mix, so the factor cancels exactly. Single-GPU bs32 needs no compensation.
+  opset18:
+    symptom: ONNX export fails version-converting Pad (RT-DETRv4 issue #28, dynamo path)
+    fix: bump opset_version 17->18 in the export patch; ORT CPU supports both.
+  nan_amp:
+    symptom: NaN loss on custom data with --use-amp (DEIM #15/#96/#72, D-FINE #324/#125)
+    fix: >
+      drop --use-amp and restart from the last checkpoint. Both trainers keep
+      training through NaN (DEIM dumps ./NaN.pth and continues), so watch for that
+      file; a NaN run burns pod-hours silently.

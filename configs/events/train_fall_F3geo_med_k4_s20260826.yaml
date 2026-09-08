@@ -1,0 +1,57 @@
+# Fall push v3, arm F3 (camera-geometry augmentation), strength med / K=4,
+# seed 20260826, pre-declared (research/fall-push-v3-protocol.md, 2026-09-05).
+# F1 (overlap labelling) and F2 (kp channels) both failed the false-alarm gate, so F3 runs
+# on the unchanged `contain` labelling with the original 8 channels: the only lever is
+# the augmentation.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_F3geo_med_k4_s20260826.yaml
+#
+# Clone of the same-seed F0 control config train_fall_F0_s20260826.yaml with exactly two
+# changes:
+#   1. the geo_augment: block below, which appends 4 camera-geometry views of every
+#      training positive window per epoch, drawn online, to the training rows. The raw
+#      keypoint and box rows are warped and re-featurized (the posture angle is recomputed
+#      from the warped keypoints, never copied); holdout rows are never augmented and
+#      the validation surface is byte-identical to F0's, so the two arms share one ruler.
+#   2. out_dir.
+# med strength: s_y in [0.7, 1.0], roll +/-8.0 deg, trapezoid gain +/-0.06,
+# mirror p 0.5.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+holdout_locations: [Home_02, S4_ADL, S4_Fall, S9, S10]
+geo_augment:
+  enabled: true
+  sy_min: 0.7
+  sy_max: 1.0
+  roll_deg: 8.0
+  trapezoid: 0.06
+  mirror_p: 0.5
+  k: 4
+  kp_conf_min: 0.3
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/fall_F3geo_med_k4_s20260826

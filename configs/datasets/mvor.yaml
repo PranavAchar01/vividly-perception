@@ -1,0 +1,93 @@
+schema_version: 1
+name: mvor
+display_name: MVOR (Multi-View Operating Room)
+task: [detection, pose]
+bucket: EVAL_ONLY
+status: available
+licensing:
+  license: CC BY-NC-SA 4.0
+  license_url: https://github.com/CAMMA-public/MVOR
+  license_verbatim: >
+    Creative Commons CC-BY-NC-SA 4.0. Project README: "the dataset cannot be used for
+    commercial purposes"; "the dataset can be transformed (additional annotations,
+    etc.)"; "the dataset can be redistributed as long as it is redistributed under the
+    same license with the obligation to cite the contributing work".
+  license_conflict_note: >
+    A non-commercial licence used inside a for-profit as an engineering-only frozen exam
+    for the v2 detection lane: it never trains, and its numbers are never quoted as
+    performance. Whether that use sits inside the non-commercial grant is CQ-24; the
+    owner proceeded on 2026-08-31 pending counsel, on the same pattern as ur_fall under
+    CQ-22.
+  commercial_use: conflicting
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-24-nc-research-sets-v2-exams]
+  # The owner's decision of 2026-08-31 is the mechanical clearance for test-only use:
+  # the counsel question stays open, and the gate stops refusing.
+  counsel_cleared_utc: "2026-08-31"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-31T08:45:00Z"
+    method: >
+      open http download from the CAMMA public S3 bucket; no click-through terms;
+      licence stated in the project README; the owner accepted the stated terms for
+      test-only use
+    evidence_path: null
+provenance:
+  collector: CAMMA, University of Strasbourg / IHU Strasbourg (Srivastav et al.)
+  imagery_source: >
+    a real hospital interior, a hybrid operating room at the University Hospital of
+    Strasbourg: 732 synchronized multi-view frames from three wall-mounted and
+    ceiling-mounted RGB-D cameras over four recording days; clinicians are present, and
+    faces were blurred by the publishers before release
+  contains_real_people: true
+  simulated_medical_events: false
+  citation: >
+    Srivastav, Issenhuth, Kadkhodamohammadi, de Mathelin, Gangi, Padoy, "MVOR: A
+    Multi-view RGB-D Operating Room Dataset for 2D and 3D Human Pose Estimation",
+    MICCAI-LABELS 2018.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://s3.unistra.fr/camma_public/datasets/mvor/camma_mvor_dataset.zip
+  human_steps: []
+layout:
+  root: data/eval_only/mvor
+  # verified on disk 2026-08-31: camma_mvor_dataset/day{1..4}/cam{1..3}/{color,depth}/NNNNNN.png
+  # single-split set: test and val alias the same tree, the same pattern as ur_fall
+  images: {test: camma_mvor_dataset, val: camma_mvor_dataset}
+  annotations: {test: annotations/camma_mvor_2018.json, val: annotations/camma_mvor_2018.json}
+ann_format: mvor_coco_json
+# Driven by scripts/data/convert_mvor.py under configs/convert/mvor_person_v2.yaml, which
+# writes the exam surface annotations/mvor_person_v2_coco.json beside the released file
+# that layout.annotations registers.
+converter: vividly.data.convert.mvor_to_coco
+hashes_unavailable_reason: null
+counts:
+  frames: 732            # synchronized multiview triplets (published figure)
+  images: 2196           # single-camera color frames on disk = 732 x 3 cams (verified)
+  person_boxes_2d: 4699  # 'annotations' array length in camma_mvor_2018.json (verified)
+  keypoint_annotations_2d: 2926
+  cameras: 3
+  days: 4
+derived_from: []
+notes: >
+  Frozen exam surface for the v2 detection lane: the only public real hospital-interior
+  multi-camera person-detection set found by the dataset research pass of 2026-08. The
+  zip is 1.4 GB; the harness consumes the RGB frames, and the depth streams in the same
+  zip are ignored. It never trains, being EVAL_ONLY and carrying CQ-24, and it is never
+  uploaded to any cloud or object store, because clinical-adjacent footage stays on
+  local machines, the same posture as the fall and seizure sets. Faces arrive blurred
+  from the publisher, and no identity work of any kind touches this data.
+  Acquisition record (2026-08-31): the zip carries frames only. The COCO-style
+  annotations file ships separately in the project's GitHub repository and was fetched
+  from raw.githubusercontent.com/CAMMA-public/MVOR/master/annotations/camma_mvor_2018.json;
+  its keys and counts were verified after download, at 2196 images and 4699 annotations.
+  The extracted tree carries the publisher's LICENSE file, holding the full
+  CC BY-NC-SA 4.0 text, and README.txt. s3.unistra.fr cuts connections at about 200 MB,
+  so the fetch needed a resume-retry loop (curl -C -) until the byte size matched; the
+  final zip was verified with unzip -t and against the sha256 below.
+files:
+  - {name: camma_mvor_dataset.zip, size_bytes: 1395226000, sha256: d628cdfb2951a5e9242f18f6d291547c9b6e635d362e9bff36e9329f0833e0cd}
+  - {name: annotations/camma_mvor_2018.json, size_bytes: 3711320, sha256: 64f4270149ef1a738a881a764c4174264d051c2c2e4fd252f9c10fd5b377c0e0}

@@ -1,0 +1,43 @@
+# Interim fall verifier v1: collapse to floor.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_verifier_v1.yaml
+#
+# Trains on the Le2i track-sequence extraction only, the only fall set holding a
+# train_interim grant when this recipe was written (granted 2026-08-26); gmdcsa24 and
+# caucafall were granted theirs on 2026-08-27 and join at v3. ur_fall and multicam_fall
+# are registry-enforced test_only and are evaluated by a separate run; they are never
+# listed here. The in-run holdout below is a by-video split of the training
+# distribution, reported for optimization only.
+#
+# Window: 8 s, containing the whole fall (policy contain; clipped events are ambiguous
+# and train nothing). The fall_then_still_v0 rule fires about 30 s after the drop, so at
+# inference the backend anchors the window at the firing's onset_t (the 300 s ring still
+# holds the fall), never at fire time, where the trailing window would hold only
+# stillness. 8 s also fits the held-out UR Fall clips (3 to 13 s), which a 16 s window
+# would have excluded wholesale.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu          # tiny model; keep off the busy GPUs
+out_dir: outputs/verifier/fall_v1

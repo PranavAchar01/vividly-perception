@@ -1,0 +1,127 @@
+# uv run pre-commit install        (once)
+# uv run pre-commit run --all-files
+minimum_pre_commit_version: "3.7.0"
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: ^third_party/patches/   # mutating a unified diff corrupts it
+      - id: trailing-whitespace
+        exclude: ^third_party/patches/   # a blank diff context line is a lone space
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        # 512 KB. Datasets, checkpoints and the full-size brand pack never enter version
+        # control. The model record ships its graphs through Git LFS instead.
+        args: [--maxkb=512]
+
+  - repo: local
+    hooks:
+      # ---- Rule 1, no fisheye ----------------------------------------------
+      # Not restricted to Python: a configuration, a manifest, a fixture or a workflow fetch
+      # step is the likelier carrier of a new reference than a module, so the whole live
+      # surface is in scope. The tree still carries records that have to name what was
+      # retired, so the guard enforces that no new reference appears, against the inventory in
+      # scripts/guards/no_fisheye_allowlist.txt. The document tree is out of scope inside the
+      # guard: a policy has to be able to name the thing it retires.
+      - id: no-fisheye
+        name: no new fisheye reference
+        entry: uv run --no-sync python scripts/guards/check_no_fisheye.py
+        language: system
+        files: ^(configs|scripts|src|tests|\.github)/.*$
+        pass_filenames: true
+
+      # Editing the inventory changes what the guard is allowed to skip, so a change to it
+      # re-runs the full scan with no filenames: dropping an entry re-arms that file
+      # immediately, and a malformed entry, a pattern, a directory or a duplicate, is refused
+      # outright rather than silently widening the exemption.
+      - id: no-fisheye-allowlist
+        name: the fisheye reference inventory is well formed and the tree still passes
+        entry: uv run --no-sync python scripts/guards/check_no_fisheye.py
+        language: system
+        files: ^scripts/guards/no_fisheye_allowlist\.txt$
+        pass_filenames: false
+
+      # ---- Rule 1, the primitives that would produce the imagery -----------
+      - id: no-fisheye-primitives
+        name: no cv2 fisheye or warp primitives anywhere in the tree
+        entry: uv run --no-sync python scripts/guards/check_no_fisheye_primitives.py
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # ---- Rule 5, AGPL quarantine -----------------------------------------
+      - id: agpl-quarantine
+        name: AGPL imports only in src/vividly/eval/agpl_ref.py
+        entry: uv run --no-sync python scripts/guards/check_agpl_imports.py
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # ---- Rule 2, no facial recognition -----------------------------------
+      - id: no-face-biometrics
+        name: no facial-recognition modules or dependencies
+        entry: uv run --no-sync python scripts/guards/check_face_deps.py
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # ---- Rule 6, evaluation-only data never trains -----------------------
+      # Both hooks scan the whole training surface rather than the staged files. A change to
+      # the dataset registry, or to the weight-class declaration in the event verifier
+      # trainer, can turn a configuration that was legal yesterday into a violation without
+      # that configuration being touched, and a filename-scoped hook would never notice. The
+      # surface is small and the scan is about a second.
+      - id: train-configs-stay-in-train-ok
+        name: training configuration paths resolve inside the training trees
+        entry: uv run --no-sync python scripts/guards/check_train_data_paths.py
+        language: system
+        files: ^(configs/(events|reid|datasets)/.*\.yaml|third_party/configs/.*\.(yml|py)|scripts/events/train_event_verifier\.py|scripts/guards/check_(train_data_paths|config_registry)\.py)$
+        pass_filenames: false
+
+      # A directory dropped inside the training tree passes the hook above and still has no
+      # licence record, no provenance and no counsel review. This one resolves every corpus,
+      # including the track trees under outputs/events/, against the registry.
+      - id: train-configs-match-registry
+        name: training configuration data belongs to a registered training dataset
+        entry: uv run --no-sync python scripts/guards/check_config_registry.py
+        language: system
+        files: ^(configs/(events|reid|datasets)/.*\.yaml|third_party/configs/.*\.(yml|py)|scripts/events/train_event_verifier\.py|scripts/guards/check_(train_data_paths|config_registry)\.py)$
+        pass_filenames: false
+
+      # ---- Rule 11, re-identification weight provenance --------------------
+      # Licence traps, so the check sits upstream of any download: no locator, repository
+      # identifier, checkpoint filename or fetcher target may name a banned weight source. Not
+      # restricted to Python: a configuration, a lockfile entry, a workflow step or a make
+      # recipe is the likelier carrier, so the workflow tree and the Makefile are in scope
+      # alongside the source directories. The document tree is excluded inside the guard,
+      # because the licence allowlist names these sources in order to ban them.
+      - id: no-banned-reid-weight-sources
+        name: no banned re-identification weight sources
+        entry: uv run --no-sync python scripts/guards/check_reid_weight_sources.py
+        language: system
+        files: ^(pyproject\.toml|uv\.lock|Makefile|\.github/.*|(scripts|configs|src|tests)/.*)$
+        pass_filenames: true
+
+      # ---- Rule 2, the dependency half, runs with no Python staged ---------
+      # The lockfile is in scope because a face-biometric package can arrive transitively, in
+      # which case pyproject.toml never mentions it.
+      - id: no-face-biometrics-deps
+        name: no facial-recognition dependencies in pyproject.toml or uv.lock
+        entry: uv run --no-sync python scripts/guards/check_face_deps.py
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false

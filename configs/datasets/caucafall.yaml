@@ -1,0 +1,121 @@
+schema_version: 1
+name: caucafall
+display_name: CAUCAFall (fall recognition in an uncontrolled home environment)
+task: [detection]
+bucket: TRAIN_PROTOTYPE
+status: available
+licensing:
+  license: CC BY 4.0
+  license_url: https://data.mendeley.com/datasets/7w7fccy7ky/4
+  license_verbatim: >
+    Mendeley Data record 7w7fccy7ky version 4, licence field: "CC BY 4.0"
+    (Creative Commons Attribution 4.0). doi:10.17632/7w7fccy7ky.4.
+  license_conflict_note: >
+    No non-commercial and no share-alike clause: commercial use and
+    redistribution are permitted with attribution. CC BY is a content licence,
+    so the attribution string below must accompany any external use. It is the
+    acted nature of the events, not the licence, that keeps weights in the
+    prototype class.
+  commercial_use: permitted
+  attribution_required: true
+  redistribute: false
+  counsel_questions: [CQ-22-acted-fall-dataset-licenses]
+  counsel_cleared_utc: "2026-08-27"
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-27T18:30:00Z"
+    method: >
+      admitted by the owner on 2026-08-27 for interim fall-verifier training,
+      after the licence brief of the same date
+      (research/fall-dataset-licences.md); ungated Mendeley http download
+    evidence_path: null
+  prototype_grant:
+    decision: fall-prototype-sets
+    decided_utc: "2026-08-27"
+    decided_by: owner
+    attribution: >
+      CAUCAFall: J. C. Eraso, E. Munoz, M. Munoz, J. Pinto, "Dataset CAUCAFall",
+      Mendeley Data V4 (2022), doi:10.17632/7w7fccy7ky.4, CC BY 4.0. Described
+      in "Dataset for human fall recognition in an uncontrolled environment",
+      Data in Brief 45 (2022) 108610.
+    ship_policy: >
+      trains interim prototype fall verifiers only, in the prototype weight
+      class; nothing trained on this data is deployed commercially or
+      externally distributed without counsel sign-off (CQ-22)
+  event_grant:
+    decision: fall-prototype-sets
+    decided_utc: "2026-08-27"
+    decided_by: owner
+    role: train_interim
+provenance:
+  collector: J. C. Eraso, E. Munoz, M. Munoz, J. Pinto (Universidad del Cauca)
+  imagery_source: >
+    actors performing staged falls and activities of daily living in an
+    uncontrolled home environment: 10 subjects, 5 fall types (forward,
+    backward, left, right, from sitting) plus 5 activities of daily living
+    (walking, hopping, picking up an object, sitting, kneeling) each; single
+    camera mounted in the upper corner of the room, giving a high-angle view.
+    Measured on landing 2026-08-27 against every container: 720x480 at 20.00
+    fps, so the record page's figure of 1080x960 and the paper's figure of 23
+    fps are both wrong for this distribution. The set carries occlusions,
+    lighting changes (natural, artificial, night) and background motion; one
+    .avi per sequence plus per-frame stills with YOLO-style label txts, where
+    class 1 means falling.
+  contains_real_people: true
+  simulated_medical_events: true
+  citation: >
+    J. C. Eraso, E. Munoz, M. Munoz, J. Pinto, "Dataset for human fall
+    recognition in an uncontrolled environment", Data in Brief 45 (2022)
+    108610. doi:10.17632/7w7fccy7ky.4.
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - https://data.mendeley.com/datasets/7w7fccy7ky/4
+    - https://data.mendeley.com/public-api/zip/7w7fccy7ky/download/4
+  human_steps: []
+layout:
+  root: data/train_prototype/caucafall
+  # val is the full set, following the le2i pattern, and is therefore contaminated
+  # for any weight trained on this data. Verifier test numbers come from ur_fall
+  # and multicam_fall.
+  images: {train: videos, val: videos}
+  annotations: {train: annotations, val: annotations}
+ann_format: caucafall_frames_txt
+converter: vividly.data.convert.caucafall
+files:
+  # Landed 2026-08-27 through the record page's bulk download endpoint. Mendeley
+  # generates the bulk zip server-side, so the hash pins this local copy: no
+  # upstream checksum exists to compare against, and a re-download may hash
+  # differently even with identical contents.
+  - {name: upstream/caucafall_v4.zip, size_bytes: 8326349365, sha256: f8cab337dfae0d0ff210cb94e12cec320cb6be867667d6e29c8b27ccc7ea76ee}
+hashes_unavailable_reason: null
+counts: {subjects: 10, falls_per_subject: 5, adls_per_subject: 5}
+derived_from: []
+notes: >
+  Second interim fall training set, alongside gmdcsa24, admitted 2026-08-27 after
+  the split verdict of fall v2 measured that the verifier needs positive-side
+  angle, subject and scene diversity (research/event-verifier-v1-record.md). The
+  high-corner camera is the closest licensed public angle to an elevated view;
+  true overhead fall footage exists only in the multicam_fall exam set, which
+  never trains. Landed shape, measured 2026-08-27 across all 100 sequences: each
+  sequence directory holds one .avi, the source of record, whose
+  container-measured 20.00 fps caught the paper's declared 23 being wrong, plus
+  per-frame stills and YOLO label txts as the label layer, where class 1 means
+  falling and classes.txt reads `nofall`/`fall`. vividly.data.convert.caucafall
+  symlinks videos/S{n}/<activity>.avi, reads the fall span from the first to the
+  last class-1 frame on the trailing-digit numbering of the stills, and writes
+  annotations/index.json; its module docstring records every absorbed defect (one
+  `- copia` stray excluded, 4 numbering holes, 6 unlabelled stills, stills running
+  one frame past every container and 23 past the truncated avi of S6 Fall
+  backwards, one mid-fall label flicker). Class-1 spans include the
+  lying-on-floor aftermath, with a median span of 7.0 s against the short dynamic
+  fall intervals of le2i, so they yield more positive windows per fall. This is
+  noted so that span lengths are not read as comparable across sets. The
+  recordings of activities of daily living double as quiet-footage negatives for
+  fall training, requested on 2026-08-27, and were drawn as side-view seizure
+  negatives once, by the pre-declared recipe
+  configs/events/train_convulsion_v6_real.yaml, which selects the no-event clips
+  with no_event_only and force_label 0. That arm was rejected on its exam look
+  (final_models/seizure/README.md), so no promoted seizure model is trained on
+  this set.

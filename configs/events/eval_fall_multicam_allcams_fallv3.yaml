@@ -1,0 +1,26 @@
+# Fall v3 against the all-cameras Montreal Multi-Cam surface, 192 views, exam side.
+# One pre-declared look, part of the 2026-08-28 full-testing expansion. All three
+# fall models (v1 080b5d86, v2 e9cebe4d, v3 67954c04) get this identical look so
+# the per-camera-angle picture is uniform. Nothing is selected on it: the fall slot
+# was settled on the reference-camera exams, and this surface measures the angle
+# axis, the residual all three carried, where misses concentrate on high cameras.
+# The window must equal the fall trainers' geometry, 8.0 s contain, n_steps 64.
+# The graph is the committed lane weight final_models/fall/model.onnx; its digest is in
+# final_models/fall/model.onnx.sha256 and its provenance is on final_models/fall/README.md.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_allcams_fallv3.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_allcams_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: final_models/fall/model.onnx
+out_dir: outputs/verifier/fall_v3/eval_multicam_allcams

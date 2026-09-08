@@ -1,0 +1,28 @@
+# Reference inventory for scripts/guards/check_no_fisheye.py.
+#
+# The no-fisheye rule is stated in POLICY.md under rule 1. The guard enforces that no new
+# reference appears, so it needs a record of the files that already carry one. Every path below
+# is a file that names the retired domain or one of the quarantined corpora in prose: a
+# literature citation, a workflow that names the guard hooks it runs, or a guard that has to
+# write the tokens it refuses. None of them fetches, renders or trains on that imagery.
+#
+# Rules for this file, enforced by the guard when it loads:
+#   exact repository-relative paths, one per line, no patterns and no directories;
+#   no duplicates, no absolute paths, no parent traversal;
+#   text after a "#" is a comment.
+#
+# A pattern is refused outright, because one line would exempt a whole tree including files
+# that do not exist yet. Adding a path here is an owner decision and never the way to land a
+# change: the fix for a violation is to remove the reference. Removing a path is always
+# allowed and re-arms the file immediately. When a listed file loses its last reference the
+# guard says so on a full scan and the line should then be deleted.
+
+# Continuous integration, which names the guard hooks it runs.
+.github/workflows/ci.yml
+
+# Scripts. The two guard files have to write the tokens they refuse.
+scripts/guards/check_no_fisheye_primitives.py
+scripts/guards/selftest.sh
+
+# Package module. The entry below is a comment citing published work on the retired domain.
+src/vividly/reid/synth.py

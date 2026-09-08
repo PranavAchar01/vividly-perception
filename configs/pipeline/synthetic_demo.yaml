@@ -1,0 +1,97 @@
+# Vividly zero-footage pipeline demo: the replay-mode runtime structure and the
+# acute-event rules.
+#
+#   uv run python scripts/run_pipeline.py --config configs/pipeline/synthetic_demo.yaml --headless
+#
+# What this runs. Everything downstream of the tracker: TrackBook, the two event rules
+# fall_then_still_v0 and seizure_candidate_v0, the debouncing engine, the SQLite alert
+# store, and the dashboard payload. It reads generated tracker observations from a JSONL
+# fixture instead of running a detector, so it needs no model weights, no video, no cv2,
+# no numpy and no network. That is the point: the project records no footage of its own,
+# and this flow demonstrates the layer without asking anyone for footage at all.
+#
+# What the fixture is. tests/fixtures/pipeline_synth/scene_60s.jsonl: 60 simulated seconds
+# at 5 observation batches per second, three abstract tracks, where track 1 falls at t=20
+# and stays down and still, track 2 fidgets normally and track 99 walks a patrol. It is
+# generated in closed form by tests/test_dashboard.py::build_scene with no random number
+# generator and no clock, then regenerated and compared byte for byte by that test, so it
+# cannot drift.
+#
+# It is not a simulated medical event and it is not training or evaluation data, under
+# POLICY.md, rule 4; the unit-fixture boundary is recorded for counsel as CQ-21. It is points
+# moving on a plane, one of them along a fall-shaped curve, used to prove that observations
+# reach the rules, that a completed cascade reaches the store, and that the page can render
+# it.
+#
+# Thresholds. This config deliberately sets no `rules:` block: the run uses the RuleConfig
+# defaults, which tests/test_rules.py pins equal to configs/pipeline/rules.yaml. The
+# cascade confirms in down_still_min_s = 30 s, which fits a 60 second fixture natively, so
+# the demo runs the shipped provisional values unshrunk. Its predecessor had to shrink the
+# removed stillness rule's 40 minute window by a factor of 80 to fire at all; the firing
+# here is the shape that ships. Every value is still PROVISIONAL: do not quote one, and do
+# not read the firing count from this run as a false-alarm rate. docs/CALIBRATION.md is the
+# protocol that eventually replaces them.
+#
+# There is no `verify:` block, on purpose. The measured PROVISIONAL verifier operating
+# points, research/operating-points.md, 2026-09-05, are wired in
+# configs/pipeline/replay_demo.yaml, which runs real footage through real perception. The
+# fixture here is abstract points on a plane, not a person: an event-verifier head scored
+# against it would be reading motion that no camera produced, and any verdict it returned
+# would be meaningless. This config therefore keeps the abstaining, no-verifier path, which
+# is the engine's behaviour before the verifier backend existed.
+schema_version: 1
+
+run_name: synthetic_demo
+
+# Headless by default: this config exists to write artifacts and print a latency table.
+# Drop `--headless` (and set this to false) to serve the same run at the dashboard block
+# below; the page works fine with no frame, it just shows the people panel and the alerts.
+headless: true
+
+# --- zero-footage source ------------------------------------------------------
+# The presence of this key is what swaps the entire detect + pose + track stack for
+# SyntheticDetectionSource. A config with `detections_from` never builds a model.
+detections_from: tests/fixtures/pipeline_synth/scene_60s.jsonl
+
+# --- track layer --------------------------------------------------------------
+tracks:
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md) and DEMO-SHRUNK:
+  # the shipped placeholder is 300 s, which is five times longer than this whole fixture, so
+  # no track would ever get a baseline and the alert records would all carry baseline: null.
+  # 15 s buys a complete baseline, 75 samples at 5 Hz, and shows what a populated baseline
+  # looks like on the page. It is not a claim that 15 s of someone is enough to characterise
+  # them. The event rules do not require a baseline; this is for the record's readability
+  # only.
+  baseline_window_s: 15.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md): shipped placeholder, unchanged.
+  # Nothing in this fixture disappears.
+  reap_after_s: 30.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md): shipped placeholder, unchanged. The
+  # fixture writes every torso keypoint at confidence 0.9, so this gate is inert here by
+  # construction.
+  kp_conf_min: 0.3
+
+  # Ring sizing, not a threshold: keep 300 s of history at the fixture's 5 Hz cadence,
+  # which covers the longest rule window, collapse_search_s at 120 s, with headroom, so no
+  # rule's evidence is silently truncated.
+  fps: 5.0
+  ring_window_s: 300.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md): shipped placeholder, unchanged.
+  baseline_min_samples: 30
+
+# --- outputs ------------------------------------------------------------------
+output:
+  # A run writes <dir>/<run_name>/alerts.sqlite and <dir>/<run_name>/latency.jsonl.
+  dir: outputs/pipeline
+
+# --- dashboard (used only when this run is not headless) ----------------------
+dashboard:
+  # Loopback only. Nothing in this phase binds a routable interface, and POLICY.md, rule 7
+  # says no component may assume cloud connectivity at inference time.
+  host: 127.0.0.1
+  port: 8601
+  stream_hz: 4.0
+  alert_limit: 25

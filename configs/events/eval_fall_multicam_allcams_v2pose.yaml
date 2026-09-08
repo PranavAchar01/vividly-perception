@@ -1,0 +1,27 @@
+# v2pose exam: same single-look protocol as the fallv3 exam it clones,
+# on the v2pose re-extraction of the same held-out videos (2026-09-04).
+# Fall verifier v2pose against the all-cameras Montreal Multi-Cam surface (192 views,
+# test only under the registry event grant; POLICY.md, rule 6). One pre-declared look on
+# the surface declared in the 2026-08-28 full-testing expansion, and the same look every
+# fall arm takes (v1 080b5d86, v2 e9cebe4d, v3 67954c04 and this v2pose arm), so the
+# per-camera-angle picture is uniform. Nothing is selected on it: the fall slot was
+# settled on the reference-camera exams, and this surface measures the angle axis (the
+# residual every fall arm carried, that misses concentrate on high cameras).
+# window: must equal the fall trainers' geometry (8.0 s contain, n_steps 64).
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_allcams_v2pose.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_allcams_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v2pose/verifier.onnx
+out_dir: outputs/verifier/fall_v2pose/eval_multicam_allcams

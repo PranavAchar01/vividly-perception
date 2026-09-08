@@ -1,0 +1,48 @@
+# Fall push v3, arm F1 (label-geometry), seed 20260826, pre-declared
+# (research/fall-push-v3-protocol.md, 2026-09-05).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_F1_s20260826.yaml
+#
+# Clone of train_fall_verifier_v2pose.yaml with exactly three changes:
+#   1. holdout_locations pins the protocol's fixed holdout (le2i Home_02,
+#      gmdcsa24 S4_ADL and S4_Fall, caucafall S9 and S10) instead of the
+#      seed-drawn grouped_split, because the seed-20260826 grouped_split draw put
+#      126 of 190 positives in validation, which confounded the earlier
+#      no-effect reading.
+#   2. window.policy overlap (overlap_min_s 4.0, contain_margin_s dropped) instead
+#      of contain, the one F1 lever: caucafall contributes 95 positives instead of 1
+#      (protocol step 2 verified counts).
+#   3. out_dir, which is outputs/verifier/fall_F1_s20260826. The seed carries over
+#      unchanged from the base recipe, which also runs 20260826.
+# Sources, model and hyperparameters are identical; the only window change is the
+# labelling policy.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/le2i_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+holdout_locations: [Home_02, S4_ADL, S4_Fall, S9, S10]
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/fall_F1_s20260826

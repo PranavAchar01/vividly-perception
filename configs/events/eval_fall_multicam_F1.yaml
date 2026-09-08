@@ -1,0 +1,24 @@
+# Fall push v3 exam look: F1 median-val seed 20260905 (onnx 916332b2; trained under
+# overlap labelling, while the exam labelling below stays contain, so the surface is
+# untouched).
+# One pre-declared look per research/fall-push-v3-protocol.md (2026-09-05).
+# Clone of eval_fall_multicam_v2pose.yaml; only model.onnx and out_dir differ.
+# window: must equal the fall trainers' geometry (8.0 s contain, n_steps 64), because
+# the exam surface and its labelling are identical across every arm.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_F1.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_F1_s20260905/verifier.onnx
+out_dir: outputs/verifier/fall_F1_s20260905/eval_multicam

@@ -1,0 +1,27 @@
+# Fall verifier v1 against the UR Fall held-out test extraction taken through the retired
+# chained-lr25 prototype detector 1e9445c5. Same model 080b5d86, same window and the same
+# thresholds as eval_fall_urfall_v1.yaml; the detector generation behind the extraction is
+# the only change, with pose, tracker and operating point held identical. Only 34 of the 52
+# UR Fall videos yielded valid windows at all, because that detector frequently fails to
+# form tracks on normal-height cameras (research/event-verifier-v1-record.md). The verifier
+# is a prototype weight under the interim event-model carve-out in POLICY.md, rule 4.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_urfall_v2eyes.yaml
+#
+# window: must equal the window in configs/events/train_fall_verifier_v1.yaml, because
+# the graph's input geometry pins n_steps and the time scale pins window_s.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/ur_fall_tracks_v2
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v1/verifier.onnx
+out_dir: outputs/verifier/fall_v1/eval_ur_fall_lr25eyes

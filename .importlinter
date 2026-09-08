@@ -1,0 +1,63 @@
+[importlinter]
+root_packages =
+    vividly
+include_external_packages = True
+
+[importlinter:contract:agpl-quarantine]
+name = AGPL packages are importable only from vividly.eval.agpl_ref
+type = forbidden
+source_modules =
+    vividly
+forbidden_modules =
+    ultralytics
+    boxmot
+ignore_imports =
+    vividly.eval.agpl_ref -> ultralytics
+# boxmot stays in the forbidden list above but has no ignore entry: nothing in the tree
+# imports it, and an ignore that matches no import warns on every run. An unmatched entry
+# warns rather than failing the contract, so an ignore may be added when the AGPL tracking
+# reference lands without the contract breaking in between.
+unmatched_ignore_imports_alerting = warn
+
+# torchreid is MIT rather than AGPL, and the licence allowlist in docs/LICENCE_ALLOWLIST.md
+# admits it as the one sanctioned source of OSNet weights and code. It still never imports
+# into the shipped package: development-side embedding inference is ONNX over onnxruntime, and
+# torchreid lives only in the curate fork, and by hand on the training pod, for export and for
+# work on a GPU. This contract is what keeps that description truthful.
+[importlinter:contract:torchreid-stays-out-of-vividly]
+name = torchreid never imports into the vividly package
+type = forbidden
+source_modules =
+    vividly
+forbidden_modules =
+    torchreid
+
+[importlinter:contract:no-face-biometrics]
+name = No facial-recognition dependency may be reachable from any Vividly module
+type = forbidden
+source_modules =
+    vividly
+forbidden_modules =
+    face_recognition
+    insightface
+    deepface
+    retinaface
+    facenet_pytorch
+    mtcnn
+    dlib
+    mediapipe
+    face_alignment
+    facexlib
+
+# The AGPL reference runs as a separate process in its own virtual environment and its numbers
+# come back as serialised JSON. If the runner ever imported it directly, that boundary would be
+# gone and the process separation the isolation rule depends on would become a comment.
+[importlinter:contract:runner-never-imports-agpl-ref]
+name = The eval runner shells out to agpl_ref, it never imports it
+type = forbidden
+source_modules =
+    vividly.eval.runner
+    vividly.eval.metrics
+    vividly.models
+forbidden_modules =
+    vividly.eval.agpl_ref

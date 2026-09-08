@@ -1,0 +1,28 @@
+# v2 person training manifests from per-scene SmartSpaces conversions.
+#
+#   uv run python scripts/data/merge_coco.py --config configs/convert/person_v2_manifests.yaml
+#
+# Runs after convert_smartspaces.py has written the six per-scene JSONs. Emits,
+# under the dataset's annotations/ dir:
+#   person_v2_train.json   - Warehouse_000..004, every stride-30 frame
+#   person_v2_devval.json  - Warehouse_005 only, thinned to source_frame % 150 == 0
+#
+# Warehouse_005 is the dev-val scene: held out by scene from training so per-epoch
+# checkpoint selection has an honest surface. The SmartSpaces val scenes
+# (Hospital_000, Lab_000, W015, W016) are exam-side and appear in no manifest here,
+# so selection never touches them (registry exam rule); the script refuses any
+# _val_ input outright. The 150 stride is 5 x the extraction stride 30, so dev-val
+# frames are an exact subset of what is already on disk.
+#
+# file_name gets the scene prefix (Warehouse_00N/Camera_NNNN/FFFFFF.jpg), so both
+# manifests share one img_folder: <dataset>/frames/train.
+schema_version: 1
+dataset: physicalai_smartspaces
+annotations_dir: annotations
+manifests:
+  person_v2_train:
+    scenes: [Warehouse_000, Warehouse_001, Warehouse_002, Warehouse_003, Warehouse_004]
+    frame_stride: null
+  person_v2_devval:
+    scenes: [Warehouse_005]
+    frame_stride: 150

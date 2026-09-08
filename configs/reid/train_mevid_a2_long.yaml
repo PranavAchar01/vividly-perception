@@ -1,0 +1,161 @@
+# Re-identification rerun A2: the Phase A recipe on a longer schedule. Clone of
+# train_mevid_a1.yaml with exactly two declared deltas, epochs 30 to 60 and stepsize 20
+# to 40, plus a renamed out_dir and onnx_name so nothing overwrites the run of record.
+# Declared before the run in research/reid-rerun-a2-protocol.md.
+#
+#   .venv/bin/python -u scripts/reid/train_reid_mevid_a1.py --config configs/reid/train_mevid_a2_long.yaml
+#
+# Pod only (RTX 5090, torch >= 2.7 / cu128). The mac path is torch-free by design.
+# Registry entry for the corpus and its licence position: configs/datasets/mevid.yaml.
+schema_version: 1
+
+# Prototype, declared and not inferred: MEVID is a TRAIN_PROTOTYPE entry, so only
+# prototype weights may come off it (POLICY.md, rule 6). The trainer refuses to start if
+# this says anything else, so a checkpoint can never end up unlabelled.
+weight_class: prototype
+
+# The pod's working copy, in the pod layout described in TRAINING.md. The loader accepts
+# either the dataset directory itself or a parent containing mevid/, so this points straight
+# at the directory holding bbox_train/, bbox_test/ and the five index files. Deliberately not
+# resolved through the registry: the registry entry is `status: available` with the three
+# archive digests recorded (configs/datasets/mevid.yaml), there are no bytes under
+# data/train_prototype/ on any development machine, and the pod copy lives outside the repo
+# tree entirely.
+root: /workspace/mevid
+out_dir: outputs/reid_mevid_a2_long
+dataset_name: mevid
+
+# Fixed so a re-run is reproducible in distribution (cudnn atomics keep bitwise equality
+# off the table; the trainer says so in its log rather than over-claiming).
+seed: 20260907
+device: cuda
+workers: 8
+
+epochs: 60
+
+# 8 frames, randomly sampled per tracklet per epoch. MEVID tracklets average ~590 frames,
+# so 'evenly' would hand the model a near-identical 8 frames every epoch and throw away the
+# temporal variety that is the reason for using a video benchmark at all; 'random' makes
+# each epoch a fresh view of the same tracklet. 8 rather than torchreid's default 15 is the
+# memory trade: batch_train tracklets x seq_len frames is what the GPU actually sees, so 32
+# x 8 = 256 crops per step.
+seq_len: 8
+sample_method: random
+# Evaluation uses a fixed, span-covering draw instead. torchreid 1.4.0 hands one
+# sample_method to the train and the test datasets alike, so leaving this at `random` would
+# make every evaluation a fresh random frame draw, so the same weights measure a different
+# mAP on two consecutive passes and no evaluation reproduces. The trainer overrides the test
+# datasets after building the manager; this key is what it sets them to.
+test_sample_method: evenly
+
+# Tracklets per batch, not images. With train_sampler RandomIdentitySampler and
+# num_instances 4 this is 8 identities x 4 tracklets each (P=8, K=4, the pairing torchreid's
+# own triplet examples use), which is what makes an in-batch triplet possible at all: a
+# plain RandomSampler batch usually has no positive pair and the triplet term silently
+# collapses to zero. 32 x 8 = 256 crops per step, about 23 GB on the 5090. The first run
+# used 16 tracklets (4 identities per batch) and collapsed; see fixbase_epoch below.
+batch_train: 32
+num_instances: 4
+train_sampler: RandomIdentitySampler
+# Test batches carry no sampler constraint; smaller because eval tracklets are read at
+# full seq_len with no augmentation and the loader is the bottleneck, not the GPU.
+batch_test: 8
+
+height: 256
+width: 128
+# random_flip is the only geometric augmentation that is safe for appearance re-ID (a
+# mirrored person is the same person; a crop or a rotation can cut the clothing region that
+# carries the whole signal). random_erase is the standard occlusion proxy and is the one
+# augmentation that matters in a waiting room, where people are constantly half behind
+# chairs and other people.
+transforms: [random_flip, random_erase]
+
+# ImageNet-only init, per docs/LICENCE_ALLOWLIST.md ("OSNet weights come only from the
+# canonical MIT torchreid distribution, ImageNet-pretrained variant preferred"). torchreid
+# fetches osnet_x1_0_imagenet.pth into $TORCH_HOME/checkpoints on first use; the trainer
+# logs that path and its sha256, and states plainly if the file is absent (which would mean
+# a random init, not an ImageNet one). No re-identification-pretrained weight is used
+# anywhere in this recipe: the Market-1501-trained OSNet variants are eval-only until
+# counsel says otherwise, and the research-only lineages the licence allowlist bans by name
+# would carry their licence problem straight into the run. The denylist itself is
+# docs/LICENCE_ALLOWLIST.md and scripts/guards/check_reid_weight_sources.py; do not restate
+# its tokens here, because the guard scans this file.
+pretrained: true
+
+# Training loss. `softmax` is torchreid's own OSNet recipe: cross-entropy over the training
+# identities with label smoothing and no metric term (VideoSoftmaxEngine). `triplet` adds
+# the library's batch-hard triplet term (VideoTripletEngine) and is what the first two runs
+# of this recipe used, on 2026-09-07 at 16:32Z and 16:48Z; both collapsed, the second even
+# after five classifier-only epochs. With hard mining on unnormalised features and
+# clothes-change positives that sit far from their anchor, the cheapest way down for the
+# triplet term is to shrink every feature to one point, and the softmax term could not hold
+# it: loss_t rested at the margin, loss_x at ln(104), and the first run's epoch-10
+# evaluation gave rank-1 equal to rank-20. The softmax engine has no such path. Both runs
+# are kept on the training host and recorded on the lane page, final_models/reid/README.md.
+loss: softmax
+
+# 'amsgrad' is an optimiser name in torchreid 1.4.0, not a flag on adam
+# (torchreid/optim/optimizer.py: AVAI_OPTIMS = [adam, amsgrad, sgd, rmsprop, radam]);
+# it builds torch.optim.Adam(..., amsgrad=True). 0.0015 is torchreid's own OSNet softmax
+# default (the 3e-4 the first two runs used is the library's triplet default).
+optim: amsgrad
+lr: 0.0015
+weight_decay: 0.0005
+
+# torchreid 1.4.0 has no warmup scheduler at all: AVAI_SCH is exactly
+# [single_step, multi_step, cosine] (torchreid/optim/lr_scheduler.py), and there is no
+# warmup hook anywhere in Engine. single_step is what torchreid's own OSNet recipes use and
+# is the one verified to work here; stepsize 40 of 60 epochs keeps the drop at two thirds
+# of the schedule, as the run of record had it at 20 of 30, so the last third trains at
+# 0.1x, which is where the embedding actually settles.
+lr_scheduler: single_step
+stepsize: 40
+gamma: 0.1
+
+# Read only under `loss: triplet`; kept so the collapsed runs' settings stay legible.
+weight_t: 1.0
+weight_x: 1.0
+margin: 0.3
+label_smooth: true
+
+# Two-stepped transfer learning, torchreid's own OSNet fine-tuning recipe: the first
+# fixbase_epoch epochs train only the layers named in open_layers, with the ImageNet trunk
+# frozen in eval mode, so the fresh classifier learns on ImageNet features before the
+# triplet term can move the trunk. The first run of this recipe (2026-09-07 16:32Z, without
+# these two keys and at 16 tracklets per batch) collapsed by epoch 3: loss_t sat at the
+# margin 0.3, loss_x at ln(104), accuracy at chance, and the epoch-10 evaluation gave
+# mAP 5.6 with rank-1 equal to rank-20 at 6.3, which is a constant feature. Recorded on the
+# lane page, final_models/reid/README.md.
+fixbase_epoch: 5
+open_layers: [classifier]
+# Tracklet features are the mean over the seq_len frame embeddings. 'max' overweights the
+# single most distinctive frame, which on MEVID is usually the one nearest the camera, a
+# scale artefact rather than an identity signal.
+pooling_method: avg
+
+# Test every 10 epochs (5 mid-run evaluations over 60 epochs) plus torchreid's unconditional
+# final test. This is what feeds the test_map column of curves.csv and the best-checkpoint
+# selection; a full MEVID test pass is not free, so it is not run every epoch.
+eval_freq: 10
+print_freq: 20
+# Ranks printed by torchreid's own evaluation. Read from config and clamped by the trainer
+# because torchreid 1.4.0 indexes cmc[r-1] with no bounds check while truncating the curve
+# to min(50, gallery_size); on a subset run that is an IndexError after the epoch is
+# already trained. MEVID's gallery is 1,438 tracklets, so 20 is safe here.
+ranks: [1, 5, 10, 20]
+# The trainer checkpoints every epoch (torchreid only saves on eval epochs, which would
+# leave 27 of 30 unsaved), so the epoch files are pruned to the newest two. model-best.pth.tar
+# is never pruned. Each file carries optimizer + scheduler state, so keeping all 30 would be
+# a few hundred MB of pod disk nobody reads.
+keep_last: 2
+# euclidean on raw features is torchreid's default and the setting published MEVID numbers
+# are comparable to. The cosine and camera-debiased variants are computed separately by the
+# trainer, after training, from the same feature extraction.
+dist_metric: euclidean
+
+# opset 17 is the floor for the operators onnxruntime 1.2x lowers cleanly on CPU, and is
+# what the mac path runs embeddings through (the mac side is torch-free and goes via
+# onnxruntime). The trainer refuses to declare success unless torch and onnxruntime agree to
+# a cosine similarity above 0.999 on random input.
+opset: 17
+onnx_name: osnet_x1_0_mevid_a2_long.onnx

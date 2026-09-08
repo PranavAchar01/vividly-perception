@@ -1,0 +1,34 @@
+# Supplementary exam: the 4 unallocated WU-SAHZU patients through seizure v2.
+# Patients pat06, pat08, pat10 and pat12 were left out of both train and test as
+# label-uncertain, and from 2026-08-28 they are measured rather than left unmeasured.
+# All 12 of their videos were extracted into wu_sahzu_tracks_v2 and scored, the 1,386
+# windows with 178 positive recorded on final_models/seizure/README.md. Every event is
+# focal (P), outside the convulsive product target, and the onset labels carry that label
+# uncertainty, so latency numbers are indicative only.
+# This is not part of the primary held-out exam and does not amend it; it never
+# selects variants. The allocation recorded on 2026-08-28 is permanent: these four
+# patients sit on the exam side for good, this supplement is the second seizure exam
+# surface, and the earlier train-side proposal is closed, so they never enter a training
+# manifest. The permanent-allocation rule is rule 4 of POLICY.md.
+# The graph is the committed lane weight final_models/seizure/model.onnx, sha256
+# 07c399be24f89a44670262ea75879cc67f60f46c5cd52e5d2cc4218e914b7e22.
+# Paths under outputs/ are gitignored run directories built by the extraction and
+# evaluation steps, not files in version control.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_wusahzu_unallocated_v2.yaml
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v2
+    locations: [pat06, pat08, pat10, pat12]
+model:
+  onnx: final_models/seizure/model.onnx
+out_dir: outputs/verifier/convulsion_v2_real/eval_wusahzu_unallocated

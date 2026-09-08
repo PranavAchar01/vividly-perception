@@ -1,0 +1,484 @@
+{
+  "augment": null,
+  "calibration": {
+    "degenerate_fit": false,
+    "fitted_on": "train_holdout_val",
+    "note": "score = sigmoid(logit / temperature); monotonic in exact math, grid bounded [0.25, 8] against float saturation",
+    "temperature": 1.6006
+  },
+  "channels": [
+    "vy",
+    "vx",
+    "h_rel",
+    "aspect",
+    "angle_norm",
+    "angle_valid",
+    "kpc",
+    "present"
+  ],
+  "checkpoint": {
+    "file": "verifier.pt",
+    "sha256": "a5da25da24c1752009bc55a066fe55fec4f450ee660da3ebe34344a1fc66873e"
+  },
+  "config": {
+    "holdout_locations": [
+      "Home_02",
+      "S4_ADL",
+      "S4_Fall",
+      "S9",
+      "S10"
+    ],
+    "model": {
+      "blocks": 3,
+      "dropout": 0.15,
+      "hidden": 64
+    },
+    "out_dir": "outputs/verifier/fall_F0_v2c_s20260901",
+    "schema_version": 1,
+    "sources": [
+      {
+        "dir": "outputs/events/le2i_tracks_v2c",
+        "event_keys": [
+          "fall_start_t",
+          "fall_end_t"
+        ]
+      },
+      {
+        "dir": "outputs/events/gmdcsa24_tracks_v2c",
+        "event_keys": [
+          "fall_start_t",
+          "fall_end_t"
+        ]
+      },
+      {
+        "dir": "outputs/events/caucafall_tracks_v2c",
+        "event_keys": [
+          "fall_start_t",
+          "fall_end_t"
+        ]
+      }
+    ],
+    "task": "fall",
+    "train": {
+      "batch": 256,
+      "device": "cpu",
+      "epochs": 60,
+      "lr": 0.001,
+      "pos_weight": "auto",
+      "seed": 20260901,
+      "weight_decay": 0.0001
+    },
+    "window": {
+      "contain_margin_s": 0.5,
+      "min_present": 0.35,
+      "n_steps": 64,
+      "policy": "contain",
+      "stride_s": 1.5,
+      "window_s": 8.0
+    }
+  },
+  "disclosure": "Interim prototype event verifier, admitted under the acted-event carve-out of POLICY.md, rule 4. Trained on public acted-fall footage, on synthetic motion, or on both. Internal demonstration only; no number here is clinical detection performance. Real test numbers come only from the registry-enforced held-out sets.",
+  "geo_augment": null,
+  "git_commit": "dfc38da",
+  "history": [
+    {
+      "epoch": 1,
+      "seconds": 0.5,
+      "train_loss": 1.11991,
+      "val_auc": 0.81312
+    },
+    {
+      "epoch": 2,
+      "seconds": 1.0,
+      "train_loss": 0.88303,
+      "val_auc": 0.82346
+    },
+    {
+      "epoch": 3,
+      "seconds": 1.5,
+      "train_loss": 0.83966,
+      "val_auc": 0.81683
+    },
+    {
+      "epoch": 4,
+      "seconds": 2.0,
+      "train_loss": 0.78942,
+      "val_auc": 0.78966
+    },
+    {
+      "epoch": 5,
+      "seconds": 2.6,
+      "train_loss": 0.73714,
+      "val_auc": 0.79006
+    },
+    {
+      "epoch": 6,
+      "seconds": 3.1,
+      "train_loss": 0.7257,
+      "val_auc": 0.79178
+    },
+    {
+      "epoch": 7,
+      "seconds": 3.6,
+      "train_loss": 0.68677,
+      "val_auc": 0.79549
+    },
+    {
+      "epoch": 8,
+      "seconds": 4.1,
+      "train_loss": 0.65267,
+      "val_auc": 0.79735
+    },
+    {
+      "epoch": 9,
+      "seconds": 4.6,
+      "train_loss": 0.63265,
+      "val_auc": 0.78953
+    },
+    {
+      "epoch": 10,
+      "seconds": 5.1,
+      "train_loss": 0.61704,
+      "val_auc": 0.79324
+    },
+    {
+      "epoch": 11,
+      "seconds": 5.6,
+      "train_loss": 0.56143,
+      "val_auc": 0.7662
+    },
+    {
+      "epoch": 12,
+      "seconds": 6.1,
+      "train_loss": 0.55809,
+      "val_auc": 0.79841
+    },
+    {
+      "epoch": 13,
+      "seconds": 6.6,
+      "train_loss": 0.54269,
+      "val_auc": 0.77787
+    },
+    {
+      "epoch": 14,
+      "seconds": 7.1,
+      "train_loss": 0.49218,
+      "val_auc": 0.79443
+    },
+    {
+      "epoch": 15,
+      "seconds": 7.6,
+      "train_loss": 0.4947,
+      "val_auc": 0.79589
+    },
+    {
+      "epoch": 16,
+      "seconds": 8.1,
+      "train_loss": 0.4559,
+      "val_auc": 0.78622
+    },
+    {
+      "epoch": 17,
+      "seconds": 8.6,
+      "train_loss": 0.47411,
+      "val_auc": 0.80808
+    },
+    {
+      "epoch": 18,
+      "seconds": 9.1,
+      "train_loss": 0.43239,
+      "val_auc": 0.75361
+    },
+    {
+      "epoch": 19,
+      "seconds": 9.6,
+      "train_loss": 0.44167,
+      "val_auc": 0.80729
+    },
+    {
+      "epoch": 20,
+      "seconds": 10.0,
+      "train_loss": 0.42275,
+      "val_auc": 0.723
+    },
+    {
+      "epoch": 21,
+      "seconds": 10.5,
+      "train_loss": 0.45653,
+      "val_auc": 0.77256
+    },
+    {
+      "epoch": 22,
+      "seconds": 11.0,
+      "train_loss": 0.43321,
+      "val_auc": 0.80239
+    },
+    {
+      "epoch": 23,
+      "seconds": 11.5,
+      "train_loss": 0.40679,
+      "val_auc": 0.69662
+    },
+    {
+      "epoch": 24,
+      "seconds": 11.9,
+      "train_loss": 0.39613,
+      "val_auc": 0.79192
+    },
+    {
+      "epoch": 25,
+      "seconds": 12.4,
+      "train_loss": 0.40241,
+      "val_auc": 0.80424
+    },
+    {
+      "epoch": 26,
+      "seconds": 12.9,
+      "train_loss": 0.38553,
+      "val_auc": 0.75083
+    },
+    {
+      "epoch": 27,
+      "seconds": 13.4,
+      "train_loss": 0.39975,
+      "val_auc": 0.83552
+    },
+    {
+      "epoch": 28,
+      "seconds": 13.9,
+      "train_loss": 0.39283,
+      "val_auc": 0.77309
+    },
+    {
+      "epoch": 29,
+      "seconds": 14.3,
+      "train_loss": 0.36536,
+      "val_auc": 0.76382
+    },
+    {
+      "epoch": 30,
+      "seconds": 14.8,
+      "train_loss": 0.34727,
+      "val_auc": 0.81856
+    },
+    {
+      "epoch": 31,
+      "seconds": 15.3,
+      "train_loss": 0.32604,
+      "val_auc": 0.78357
+    },
+    {
+      "epoch": 32,
+      "seconds": 15.8,
+      "train_loss": 0.31708,
+      "val_auc": 0.78953
+    },
+    {
+      "epoch": 33,
+      "seconds": 16.3,
+      "train_loss": 0.31073,
+      "val_auc": 0.80596
+    },
+    {
+      "epoch": 34,
+      "seconds": 16.8,
+      "train_loss": 0.3062,
+      "val_auc": 0.80835
+    },
+    {
+      "epoch": 35,
+      "seconds": 17.3,
+      "train_loss": 0.30269,
+      "val_auc": 0.76938
+    },
+    {
+      "epoch": 36,
+      "seconds": 17.8,
+      "train_loss": 0.32291,
+      "val_auc": 0.80424
+    },
+    {
+      "epoch": 37,
+      "seconds": 18.3,
+      "train_loss": 0.34534,
+      "val_auc": 0.745
+    },
+    {
+      "epoch": 38,
+      "seconds": 18.8,
+      "train_loss": 0.30379,
+      "val_auc": 0.78357
+    },
+    {
+      "epoch": 39,
+      "seconds": 19.3,
+      "train_loss": 0.29945,
+      "val_auc": 0.745
+    },
+    {
+      "epoch": 40,
+      "seconds": 19.7,
+      "train_loss": 0.29951,
+      "val_auc": 0.80981
+    },
+    {
+      "epoch": 41,
+      "seconds": 20.2,
+      "train_loss": 0.27481,
+      "val_auc": 0.76832
+    },
+    {
+      "epoch": 42,
+      "seconds": 20.7,
+      "train_loss": 0.27258,
+      "val_auc": 0.77654
+    },
+    {
+      "epoch": 43,
+      "seconds": 21.2,
+      "train_loss": 0.26918,
+      "val_auc": 0.78211
+    },
+    {
+      "epoch": 44,
+      "seconds": 21.7,
+      "train_loss": 0.2537,
+      "val_auc": 0.7841
+    },
+    {
+      "epoch": 45,
+      "seconds": 22.2,
+      "train_loss": 0.26207,
+      "val_auc": 0.77667
+    },
+    {
+      "epoch": 46,
+      "seconds": 22.7,
+      "train_loss": 0.24624,
+      "val_auc": 0.81829
+    },
+    {
+      "epoch": 47,
+      "seconds": 23.2,
+      "train_loss": 0.26673,
+      "val_auc": 0.80437
+    },
+    {
+      "epoch": 48,
+      "seconds": 23.7,
+      "train_loss": 0.26119,
+      "val_auc": 0.80106
+    },
+    {
+      "epoch": 49,
+      "seconds": 24.1,
+      "train_loss": 0.24001,
+      "val_auc": 0.80384
+    },
+    {
+      "epoch": 50,
+      "seconds": 24.6,
+      "train_loss": 0.27525,
+      "val_auc": 0.78595
+    },
+    {
+      "epoch": 51,
+      "seconds": 25.1,
+      "train_loss": 0.25106,
+      "val_auc": 0.77416
+    },
+    {
+      "epoch": 52,
+      "seconds": 25.6,
+      "train_loss": 0.2536,
+      "val_auc": 0.80053
+    },
+    {
+      "epoch": 53,
+      "seconds": 26.1,
+      "train_loss": 0.25497,
+      "val_auc": 0.76156
+    },
+    {
+      "epoch": 54,
+      "seconds": 26.6,
+      "train_loss": 0.24363,
+      "val_auc": 0.78728
+    },
+    {
+      "epoch": 55,
+      "seconds": 27.0,
+      "train_loss": 0.22809,
+      "val_auc": 0.79457
+    },
+    {
+      "epoch": 56,
+      "seconds": 27.5,
+      "train_loss": 0.21314,
+      "val_auc": 0.80636
+    },
+    {
+      "epoch": 57,
+      "seconds": 28.0,
+      "train_loss": 0.21742,
+      "val_auc": 0.76289
+    },
+    {
+      "epoch": 58,
+      "seconds": 28.5,
+      "train_loss": 0.2318,
+      "val_auc": 0.83075
+    },
+    {
+      "epoch": 59,
+      "seconds": 29.0,
+      "train_loss": 0.21342,
+      "val_auc": 0.74566
+    },
+    {
+      "epoch": 60,
+      "seconds": 29.5,
+      "train_loss": 0.22582,
+      "val_auc": 0.81206
+    }
+  ],
+  "n_negative": 1832,
+  "n_positive": 169,
+  "n_videos": 22,
+  "n_windows": 2001,
+  "negative_class_weighting": null,
+  "onnx": {
+    "file": "verifier.onnx",
+    "sha256": "baa93141776c05fc862d929a2c8cbda382097dd55c5ed82924589317a07d3fa3"
+  },
+  "resolved_pos_weight": 10.0,
+  "task": "fall",
+  "val_auc_best": 0.83552,
+  "val_operating_points": [
+    {
+      "fn": 3,
+      "fp": 118,
+      "precision": 0.09230769230769231,
+      "recall": 0.8,
+      "threshold": 0.5,
+      "tp": 12
+    },
+    {
+      "fn": 8,
+      "fp": 48,
+      "precision": 0.12727272727272726,
+      "recall": 0.4666666666666667,
+      "threshold": 0.8,
+      "tp": 7
+    },
+    {
+      "fn": 9,
+      "fp": 24,
+      "precision": 0.2,
+      "recall": 0.4,
+      "threshold": 0.9,
+      "tp": 6
+    }
+  ],
+  "vividly_weight_class": "prototype"
+}

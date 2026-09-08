@@ -1,0 +1,13 @@
+{
+  "lane": "joints",
+  "kind": "pose",
+  "backend": "rtmlib",
+  "display_name": "RTMPose-m person v2, seed 0 epoch 38",
+  "onnx": "model.onnx",
+  "onnx_sha256": "6ba9628506a8899d3a3e940dcc8af5d30342921f09d2605afa505b57453d3527",
+  "checkpoint_sha256": "a0a035fe65909980447560a70ae2f8d13400c1d12490a929e7cf3c5a7b26f102",
+  "input_size": [192, 256],
+  "weight_class": "prototype",
+  "training_data": "COCO 2017 person keypoints only, 118,287 training images and 262,465 person annotations; no rendered imagery, no prototype overhead data and no event dataset enter this manifest.",
+  "backbone_pretrain": "The initialisation rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0, sha256 e48f03d0cfe1285ee8b6d3457ac3ce33a4594a92b080053ab1ec4a7e300975f2, carries the body7 backbone pretrain, that is COCO, AI Challenger, CrowdPose, MPII, sub-JHMDB, Halpe and PoseTrack18; no published RTMPose checkpoint is free of AI Challenger data and shippability is a question for counsel."
+}

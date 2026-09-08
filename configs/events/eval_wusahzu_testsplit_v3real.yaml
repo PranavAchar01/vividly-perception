@@ -1,0 +1,23 @@
+# Seizure final_v3 on the same held-out patient split as every comparison evaluation, giving
+# the v2 against v3 comparison row. Test extraction is the lr25-eyes tracks_v3, because a v3
+# model is tested through the eyes lane it deploys with. The patient split is
+# identical to eval_wusahzu_testsplit_real.yaml and the geometry is the shared
+# comparison window. scene_channels must match the model's training window.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_wusahzu_testsplit_v3real.yaml
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v3
+    locations: [pat03, pat07, pat14, pat04, pat09, pat11]
+model:
+  onnx: outputs/verifier/convulsion_v3_real/verifier.onnx
+out_dir: outputs/verifier/convulsion_v3_real/eval_wusahzu_testsplit

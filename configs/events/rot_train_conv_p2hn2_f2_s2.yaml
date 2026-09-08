@@ -1,0 +1,47 @@
+# Push-2 arm HN2 = arm B plus per-window loss weight 2.0 on class (a) label-0 windows
+# (seizure-free recordings: pat04__free, pat04__no-Sz2P). Authorized by
+# research/seizure-push-2-out-of-fold-gate.md item 2 (75.4% of top-decile false-alarm
+# mass). This is a train-side change only; the val surface is the unweighted held-out
+# patients.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2pose
+  locations:
+  - pat01
+  - pat02
+  - pat04
+  - pat05
+  - pat09
+  - pat11
+  - pat13
+  - pat14
+- dir: outputs/events/ajile12_neg_tracks_v1
+  force_label: 0
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260901
+  device: cpu
+out_dir: outputs/verifier/conv_p2hn2/f2_s2
+holdout_locations:
+- pat02
+- pat09
+negative_class_weights:
+  seizure_free: 2.0

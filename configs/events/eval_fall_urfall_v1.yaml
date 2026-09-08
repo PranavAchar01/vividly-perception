@@ -1,0 +1,23 @@
+# Fall verifier v1 against the UR Fall held-out test extraction. UR Fall is admitted as
+# a test-only set under the recorded event grant in POLICY.md, rule 4, and it never
+# enters a training manifest.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_urfall_v1.yaml
+#
+# window: must equal configs/events/train_fall_verifier_v1.yaml's window, because the
+# graph's input geometry pins n_steps and the time scale pins window_s.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/ur_fall_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v1/verifier.onnx
+out_dir: outputs/verifier/fall_v1/eval_ur_fall

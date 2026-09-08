@@ -1,0 +1,156 @@
+# Vividly zero-footage re-identification demo, under the re-identification scope in
+# POLICY.md, section 4 and inside the replay-mode runtime.
+#
+#   uv run python scripts/run_pipeline.py --config configs/pipeline/synthetic_reid_demo.yaml --headless
+#
+# What this runs. The replay pipeline with the optional re-identification stage switched on,
+# against a generated fixture in which one person leaves and comes back after the track
+# layer has already given up on them. It needs no model weights, no video, no cv2 and no
+# network.
+#
+# What it demonstrates, in one sentence: that the system asks. Track 1 sits for 20 seconds
+# and leaves. The TrackBook holds it for reap_after_s and then drops it, at which point its
+# appearance is enrolled into the session gallery under its own track id. At t = 40 the same
+# person comes back and the tracker, correctly, calls them track 3. Track 3 is probed against
+# the gallery, matches, and the run writes exactly one pending row into reassoc_proposals,
+# asking whether track 3 is the person who was track 1 and carrying the confidence. Track 3
+# keeps its own id, its own blank chart binding and its own blank slate. Nothing is merged.
+# Nothing will be, until a reviewer presses Confirm on the dashboard, and pressing Reject is
+# worth just as much: both answers are stored as labels, through
+# EventStore.labels_as_rows.
+#
+# What it does not demonstrate: re-identification. Not a single number this run produces is
+# evidence that appearance matching works on overhead footage of real people. The embeddings
+# come from arithmetic, an invented cone geometry in src/vividly/reid/synth.py, keyed by an
+# answer key written into this file by hand. A fixture on which the right answer falls out
+# shows that the wiring carries an answer, not that the answer is right. Read that module's
+# docstring before quoting anything, and read docs/CALIBRATION.md for what would have to
+# happen before any of it became a measurement.
+#
+# What the fixture is. tests/fixtures/pipeline_reid/leave_and_return.jsonl: 120 simulated
+# seconds at 2 observation batches per second, four abstract tracks, generated in closed
+# form by tests/test_reid_pipeline.py::build_leave_and_return_scene with no random number
+# generator and no clock. That test regenerates it and compares it byte for byte, so it
+# cannot drift.
+#
+#   track 1  identity 0   t in [0, 20]     sits, then leaves for good
+#   track 2  identity 1   t in [0, 120]    never leaves: the negative control that is
+#                                          never enrolled and can never be a candidate
+#   track 3  identity 0   t in [40, 120]   the same person returning under a new tracker id
+#   track 4  identity 2   t in [60, 120]   a stranger arriving late: probed, matches
+#                                          nobody, and correctly produces no question
+#
+# It is not a simulated medical event and it is not training or evaluation data, under
+# POLICY.md, rule 4. It is points moving on a plane with vectors attached, used to prove that
+# a departure reaches the gallery, that an arrival reaches a reviewer, and that nothing in
+# between binds anything by itself.
+#
+# The rules are deliberately silent here. Every rule threshold below is the shipped
+# PROVISIONAL default, and a correct run of this config fires no alerts at all: the fixture
+# carries no keypoints, so the posture rules abstain, and it declares no exit zones, so no
+# track can leave through one. That silence is the point: this config is about identity, and
+# the rules demo is configs/pipeline/synthetic_demo.yaml. See docs/CALIBRATION.md for why no
+# threshold in either file may be quoted.
+schema_version: 1
+
+run_name: synthetic_reid_demo
+
+# Headless by default: this config exists to write artifacts and print the summary. Drop
+# --headless (and set this to false) to serve the same run at the dashboard block below and
+# answer the proposal in a browser.
+headless: true
+
+# --- zero-footage source ------------------------------------------------------
+# The presence of this key swaps the entire detect + pose + track stack for
+# SyntheticDetectionSource. A config with `detections_from` never builds a perception model.
+detections_from: tests/fixtures/pipeline_reid/leave_and_return.jsonl
+
+# --- track layer --------------------------------------------------------------
+tracks:
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md) and DEMO-SHRUNK:
+  # the shipped placeholder is 30 s. 8 s is what lets a 120 second fixture contain a
+  # departure, a reap, and a return that is unambiguously beyond the automatic window. This
+  # number matters because it is the boundary between the two regimes: inside it a returning
+  # person keeps their track id automatically and nothing is proposed; outside it nothing is
+  # automatic at all. Shrinking it does not make the system more willing to merge, because it
+  # is never willing to merge.
+  reap_after_s: 8.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md) and DEMO-SHRUNK: the shipped
+  # placeholder is 300 s, longer than track 1's entire life here. 10 s gives the tracks a
+  # complete baseline so the alert records and the people panel show a populated one. It is
+  # not a claim that 10 s characterises anyone.
+  baseline_window_s: 10.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md): shipped placeholder, unchanged. This
+  # fixture carries no keypoints at all, because it is about identity rather than posture, so
+  # the gate is inert here by construction.
+  kp_conf_min: 0.3
+
+  # Ring sizing, not a threshold: 3600 s of history at the fixture's 2 Hz cadence, so the
+  # ring covers the longest rule window instead of silently truncating a rule's evidence.
+  fps: 2.0
+  ring_window_s: 3600.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md) and DEMO-SHRUNK: the shipped
+  # placeholder is 30 samples, which at 2 Hz would need 15 s and never complete inside a
+  # 10 s baseline window. 10 keeps the baseline marked complete on a fixture this short.
+  baseline_min_samples: 10
+
+# --- rule thresholds ----------------------------------------------------------
+# Loaded from the shared file rather than restated inline, so there is exactly one place a
+# rule threshold lives. No rule in it can fire on this fixture; see the header.
+rules_config: configs/pipeline/rules.yaml
+
+# --- re-identification --------------------------------------------------------
+# Stated inline rather than through `reid_config: configs/pipeline/reid.yaml`, because the
+# identity map below is this fixture's own answer key and belongs to this fixture, not to
+# the shared defaults file. `reid` and `reid_config` are mutually exclusive; the runner
+# refuses both. Every value not named here keeps its shipped PROVISIONAL default from
+# configs/pipeline/reid.yaml, including tau at 0.75, top_k at 3 and confidence_at_tau at
+# 0.5. Read that file before changing any of them, and read docs/CALIBRATION.md before
+# quoting one.
+reid:
+  enabled: true
+
+  embeddings:
+    source: synthetic
+    dim: 512
+
+    # PROVISIONAL and invented (the re-identification scope, POLICY.md), and tuned to a
+    # generated geometry rather than to people: at separability 0.8 two synthetic identities
+    # sit near-orthogonal, pairwise cosine around 0.1, and at noise 0.2 two views of one
+    # identity sit around 0.96, so the shipped tau of 0.75 separates them cleanly and this
+    # demo has a deterministic answer. That is a statement about arithmetic. Real appearance
+    # vectors are not drawn from this distribution: the only embedder measured for this
+    # domain, ONNX `60164a99`, scores general-protocol mAP 0.204782 on the MEVID test split,
+    # below the external same-clothes floor of 0.39 (final_models/reid/README.md). Neither
+    # number may leave this file.
+    separability: 0.8
+    noise: 0.2
+    seed: 20260807
+
+    # The fixture's answer key, mapping tracker id to synthetic identity. Tracks 1 and 3 are
+    # the same person under two tracker ids, which is the entire scenario. Nothing infers
+    # this; it is declared because a generated scene is the only kind that has a ground
+    # truth.
+    identity_by_track:
+      1: 0
+      2: 1
+      3: 0
+      4: 2
+
+# --- outputs ------------------------------------------------------------------
+output:
+  # A run writes <dir>/<run_name>/alerts.sqlite, holding both alerts and reassoc_proposals
+  # at file version 3, and <dir>/<run_name>/latency.jsonl.
+  dir: outputs/pipeline
+
+# --- dashboard (used only when this run is not headless) ----------------------
+dashboard:
+  # Loopback only. Nothing in this phase binds a routable interface, and POLICY.md, rule 7
+  # says no component may assume cloud connectivity at inference time.
+  host: 127.0.0.1
+  port: 8602
+  stream_hz: 4.0
+  alert_limit: 25

@@ -1,0 +1,42 @@
+# finalv1synthetic+real: convulsion verifier trained on the synthetic corpus and on
+# the real EMU train split. This is the shootout variant that reads real clinical
+# event footage, admitted only under the recorded event grant in POLICY.md, rule 4.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_v1_synthreal.yaml
+#
+# Union of configs/events/train_convulsion_verifier_v1.yaml's sources (synthetic
+# positives and le2i real-motion force-0 negatives) and
+# configs/events/train_convulsion_v1_real.yaml's real source (the four train-side PG
+# patients; see that config for the split rationale). Same window as both siblings,
+# because the shootout compares models, not geometries.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/synth_convulsion_v1
+    event_keys: [convulsion_start_t, convulsion_end_t]
+  - dir: outputs/events/le2i_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+    force_label: 0        # real motion, none of it convulsive; falls stay negatives here
+  - dir: outputs/events/wu_sahzu_tracks_v1
+    locations: [pat01, pat02, pat05, pat13]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v1_synthreal

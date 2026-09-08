@@ -1,0 +1,54 @@
+# Interim fall verifier v2pose, pre-declared recipe (2026-09-04, committed
+# before any training or evaluation ran; anti-overfitting protocol).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_verifier_v2pose.yaml
+#
+# One change from train_fall_verifier_v3.yaml, and nothing else: the source
+# extractions. Same three datasets (le2i + gmdcsa24 + caucafall), same stock
+# detector eyes (235e8209), same tracker/tracks/rules operating point, but
+# the pose estimator is the joints model of record (P0 e38 a0a035fe, ONNX 6ba96285,
+# research/pose-seed-floor-and-champion.md) instead of the body7 zoo asset, so
+# the angle/kpc features (and the kp field the fall task ignores) come from the
+# project's own trained model, the stack the v2 live system will actually run.
+# Window geometry, architecture, calibration, hyperparameters, seed: identical to
+# v1 and v3, so the delta is attributable to the pose eyes alone. No v2 recipe file
+# is present in this repository; that arm survives only as a record in
+# research/event-verifier-v1-record.md.
+#
+# Exam protocol: one held-out look each on ur_fall and multicam
+# (eval_fall_urfall_v2pose.yaml, eval_fall_multicam{,_allcams}_v2pose.yaml)
+# after training completes; no variant selection on test. Recorded baselines:
+#   fall v1 080b5d86: ur_fall window AUC 0.957 / video AUC 0.931, multicam window AUC
+#     0.821 / video AUC 0.826 (research/event-verifier-v1-record.md)
+#   fall v3, the model of record, ONNX 67954c04: multicam all cameras window AUC
+#     0.79276 (final_models/fall/README.md)
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu          # tiny model; keep off the busy GPUs
+out_dir: outputs/verifier/fall_v2pose

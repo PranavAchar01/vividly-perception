@@ -1,0 +1,20 @@
+Subject: profile FLOPs on a CPU copy - stats() crashes on single-GPU runs
+
+det_solver.fit() calls stats(cfg) AFTER BaseSolver.train() has moved the model
+to CUDA. stats() deep-copies that CUDA model, but calflops builds its dummy
+input on CPU, so the informational FLOPs forward dies with "Expected all
+tensors to be on the same device" before training starts (hit live on the
+5090 pod, 2026-09-02, first RTv4 person_v2 launch). Move the throwaway copy
+to CPU: the profile is device-agnostic and the real model is untouched.
+---
+--- a/engine/misc/profiler_utils.py
++++ b/engine/misc/profiler_utils.py
+@@ -15,7 +15,7 @@ def stats(
+     base_size = cfg.train_dataloader.collate_fn.base_size
+     input_shape = (1, 3, base_size, base_size)
+
+-    model_for_info = copy.deepcopy(cfg.model).deploy()
++    model_for_info = copy.deepcopy(cfg.model).deploy().to("cpu")
+
+     flops, macs, _ = calculate_flops(model=model_for_info,
+                                         input_shape=input_shape,

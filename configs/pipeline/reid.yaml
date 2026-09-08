@@ -1,0 +1,202 @@
+# Vividly session-scoped re-identification settings, under the re-identification scope in
+# POLICY.md, section 4 and inside the replay-mode runtime.
+#
+# **Read this file, and the next paragraph first, before changing any number below.**
+#
+# Nothing in this file makes the system bind an identity. It cannot: there is no code path
+# in this repository that joins two track ids without a person pressing Confirm. Inside the
+# tracker's own short re-association window association is automatic and unchanged; beyond
+# it the pipeline writes a pending proposal with a confidence and waits. Raising tau does
+# not make the system less likely to merge wrongly by itself, because it never merges by
+# itself at all. What tau controls is how often a person is asked and how likely the top
+# suggestion is to be the wrong person. See src/vividly/reid/stage.py and
+# src/vividly/reid/gallery.py.
+#
+# The headline measure is the false-merge rate, not rank-1, as the re-identification scope
+# in POLICY.md states. A false merge joins two patients' identities, which in a chart-bound
+# deployment is a patient-safety event rather than an accuracy point. That is why the answer
+# to a long absence is a question rather than an automatic match.
+#
+# Every value below is PROVISIONAL. Not one has been fitted, and none of them can be until a
+# measured embedding-score distribution and shadow-mode data from a pilot site exist. On top
+# of the three reasons docs/CALIBRATION.md already gives for the rule thresholds,
+# re-identification carries a fourth that is specific to it: the lane's model of record,
+# OSNet-x1_0 MEVID Phase A (checkpoint 66623239, graph 60164a99), sits below the external
+# same-clothes floor on its own exam (final_models/reid/README.md), so a threshold carried
+# over from a published benchmark is not a conservative starting point, it is an unknown
+# one.
+#
+# Therefore: do not quote any number below, do not put one in a deck, and do not read a
+# proposal count from any run against these values as a false-merge rate. The written
+# protocol in docs/CALIBRATION.md scopes itself to configs/pipeline/rules.yaml. The
+# re-identification equivalent, tau chosen by detection and identification rate at a fixed
+# false-accept rate on a pilot-site score distribution, is not written yet, and the
+# per-value PROVISIONAL tags below cite CALIBRATION.md for its reasoning, not for a
+# re-identification procedure it does not contain. The tool that picks `tau` at a stated
+# false-accept budget in the meantime is src/vividly/reid/calibrate.py, which records the
+# achieved false-accept rate, detection and identification rate, and false-merge rate next
+# to whatever it recommends.
+#
+# This file is off by default, and that is the shipped state. No re-identification output
+# enters the shipped path before the freedom-to-operate opinion recorded as CQ-20, so a run
+# that wants the stage has to say so explicitly. Point a pipeline config at this file with
+# `reid_config: configs/pipeline/reid.yaml`, or carry a `reid:` block inline; the two are
+# mutually exclusive, exactly like `rules` and `rules_config`. The values here are the
+# ReidConfig defaults in src/vividly/reid/stage.py, restated so a run can read them without
+# importing the dataclass. That module is the source of truth if the two ever disagree.
+
+reid:
+  # The switch. False means build_reid_stage returns None: no gallery, no embedder, no
+  # proposals, and a pipeline byte-for-byte identical to the one that shipped before re-ID
+  # existed. An enabled stage with `embeddings.source: none` is refused rather than run,
+  # because a stage that is on and silently does nothing is worse than one that is off.
+  enabled: false
+
+  # --- the gallery ----------------------------------------------------------
+  gallery:
+    # Embedding width. Sizing, not a threshold: 512 is what the OSNet export in
+    # src/vividly/models/reid_backend.py emits, and a mismatch is a wiring error that both
+    # enroll and propose refuse rather than reshape.
+    dim: 512
+
+    # PROVISIONAL (the re-identification scope, POLICY.md; docs/CALIBRATION.md): the accept
+    # threshold, a cosine similarity between L2-normalised appearance vectors. A candidate
+    # below this is not returned at all, so a probe with nothing above tau is simply a new
+    # person and nobody is asked anything. 0.75 is an invented placeholder with the right
+    # shape: high enough that near-orthogonal strangers never surface, low enough that the
+    # same person in the same clothes an hour later can. It is not an operating point.
+    # Replace it with the output of src/vividly/reid/calibrate.py.
+    tau: 0.75
+
+    # PROVISIONAL (the re-identification scope, POLICY.md; docs/CALIBRATION.md): how many
+    # embeddings are kept per identity, and therefore how much of a visit's appearance
+    # variation the max-over-rows rule can see. 16 balances two effects with no measured
+    # magnitudes: more rows means a longer enrollment helps, and more rows also means more
+    # chances for one bad view to be the row a stranger matches. The keep-representative
+    # eviction is what makes the second survivable; see the gallery module docstring for why
+    # it is not first-in first-out.
+    max_per_identity: 16
+
+    # Sizing, not a threshold: how many propose() calls the rolling latency window keeps for
+    # the dashboard's stats panel. Nothing reads it as a number about people.
+    latency_window: 256
+
+    # PROVISIONAL validation tolerance, not a threshold: how far a row's L2 norm may sit
+    # from 1.0 before enroll and propose refuse it. The AppearanceEmbedder contract says
+    # rows arrive normalised, and quietly renormalising a caller's raw features would hide
+    # the wiring bug that produced them, so this is a check and not a repair.
+    unit_norm_atol: 0.001
+
+  # --- what gets asked, and how often ---------------------------------------
+
+  # PROVISIONAL (the re-identification scope, POLICY.md; docs/CALIBRATION.md): how many
+  # candidates one probe may raise. This caps how many questions one arriving person can put
+  # in front of a nurse at once; it is not a claim about how many of them are right. 3 is an
+  # estimate of a short list a person can actually compare, with no data about how often a
+  # real gallery produces two plausible candidates.
+  top_k: 3
+
+  # PROVISIONAL (the re-identification scope, POLICY.md; docs/CALIBRATION.md): the total
+  # number of questions one new track may ever generate, across its first probe and every
+  # re-probe as the gallery grows. Without a cap, a session in which many people leave keeps
+  # asking about one newcomer. The cost of this cap is a missed suggestion; the cost of not
+  # having it is a queue nobody works.
+  max_proposals_per_track: 3
+
+  # PROVISIONAL (the re-identification scope, POLICY.md; docs/CALIBRATION.md): what a
+  # similarity exactly at tau reads as, on the 0 to 1 scale the proposal record demands and
+  # a reviewer sees. The map is affine above tau, so a perfect match reads 1.0 and the accept
+  # threshold sits here. It is not a probability, and nothing in this repository makes it
+  # one; the accurate reading of 0.5 is the weakest match worth asking about. See
+  # confidence_from_similarity in src/vividly/reid/stage.py.
+  confidence_at_tau: 0.5
+
+  # PROVISIONAL (the re-identification scope, POLICY.md): minimum source-time gap between two
+  # embeddings kept for one live track. Consecutive frames of a seated person are
+  # near-duplicates, and enrolling every one of them spends that identity's whole row budget
+  # on one moment of the visit. 1 s has the right shape at a 15 fps working point; it is not
+  # a measured rate.
+  enroll_every_s: 1.0
+
+  # Sizing, not a threshold: how many embeddings may queue for one live track before the
+  # oldest is dropped. It bounds memory for someone who never leaves; the gallery refines
+  # whatever it is handed down to max_per_identity on enrollment.
+  pending_rows_per_track: 32
+
+  # The gap beyond which a candidate may be proposed at all, in source seconds. null takes it
+  # from the track layer, which is the right answer and the default: this is not a new
+  # threshold, it is tracks.reap_after_s, and a second copy of it that could disagree with
+  # the first is exactly what the gallery refuses to hold. Set a number here only to make the
+  # stage more conservative than the track layer.
+  min_gap_s: null
+
+  # Sizing, not a threshold: how many stored proposals are read back at startup to rebuild
+  # the already-asked set, so a replay over an existing alerts.sqlite never re-asks a
+  # question somebody already answered. It only bites on a store holding more than this many
+  # proposals.
+  resume_history_limit: 1000
+
+  # --- where the vectors come from ------------------------------------------
+  # Two sources and no others. The registry is closed in src/vividly/reid/stage.py, the
+  # same way the model factory is closed: an unknown name is an error, never a dynamic
+  # import of an arbitrary module path.
+  embeddings:
+    # One of none, synthetic or embedder. none is the shipped default and switches the stage
+    # off whatever `enabled` says.
+    #
+    #   synthetic  draws from a vividly.reid.synth identity bank keyed by a fixture's own
+    #              ground-truth identity map. Zero footage, no weights, no cv2, no network.
+    #              See configs/pipeline/synthetic_reid_demo.yaml. Nothing computed through
+    #              it is evidence about re-identification.
+    #
+    #   embedder   cuts the crop at each tracked box out of the replayed frame and pushes it
+    #              through an AppearanceEmbedder built by vividly.models.factory. The
+    #              factory is the only place a backend is named, and the ONNX backend
+    #              refuses every weight lineage the weight-provenance rule puts out of
+    #              bounds. Those families are listed once, in docs/LICENCE_ALLOWLIST.md
+    #              under "Re-identification weights"; spelling them out in a config would
+    #              trip scripts/guards/check_reid_weight_sources.py, which is exactly what
+    #              that guard is for.
+    source: none
+
+    # -- synthetic source only -------------------------------------------------
+    # Sizing: must equal gallery.dim above. The builder refuses a mismatch rather than
+    # reshaping anything, because a gallery cannot mix checkpoints.
+    dim: 512
+
+    # PROVISIONAL and invented (the re-identification scope, POLICY.md): the cone half-angle
+    # that sets how far apart two synthetic identities sit, and the per-sample perturbation
+    # around a centroid. These are properties of a generated geometry, not of people. Read
+    # the module docstring of src/vividly/reid/synth.py before quoting anything computed
+    # with them: a fixture on which the right answer falls out demonstrates that the wiring
+    # carries an answer, not that the answer is right.
+    separability: 0.8
+    noise: 0.2
+
+    # Determinism handle. Same config in, same embeddings out, on any platform.
+    seed: 20260807
+
+    # Fixture ground truth, mapping tracker id to synthetic identity index. This is an
+    # answer key, and it exists only because a generated scene has one. Nothing infers it,
+    # and a track missing from it produces no embedding at all and is counted as unmapped in
+    # the run summary rather than being given an identity nobody supplied.
+    identity_by_track: {}
+
+    # -- embedder source only --------------------------------------------------
+    # Handed straight to vividly.models.factory.build_embedder. `train_data` and
+    # `pretrain_data` are required by the backend with no defaults: POLICY.md, rule 8 says
+    # provenance is recorded and never assumed, and for re-identification weights the
+    # pretraining lineage is the licence question. The example below wires the lane's model
+    # of record, final_models/reid/model.onnx (checkpoint 66623239, graph 60164a99, stored
+    # with Git LFS), whose provenance section on final_models/reid/README.md records the
+    # MEVID training split over an ImageNet-1k initialisation, with no Market-1501 or
+    # MSMT17 re-identification fine-tune anywhere in the lineage:
+    #
+    #   embedder:
+    #     backend: onnx
+    #     model_path: final_models/reid/model.onnx
+    #     train_data: [mevid]
+    #     pretrain_data: [imagenet-1k]
+    #     device: cpu          # the CoreML EP crashes this repo's graphs on the Mac
+    #     name: osnet-x1-0-mevid-a1-60164a99
+    embedder: {}

@@ -1,0 +1,50 @@
+# Fall push v3, arm F3, post-hoc diagnostic. Not part of the pre-declared ablation
+# and not eligible for selection or an exam look
+# (research/fall-geometric-augmentation-arm.md).
+#
+# The identity camera: s_y = 1, no roll, no trapezoid, no mirror, K = 8. Every
+# augmented row is then a byte-identical copy of its train positive, so this run
+# isolates the half of the F3 lever that is plain positive oversampling (each train
+# positive seen 9x per epoch) from the half that is camera geometry. Written and run
+# after the 18-run grid, and recorded as post-hoc.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_F3geo_dupctrl_k8_s20260826.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+holdout_locations: [Home_02, S4_ADL, S4_Fall, S9, S10]
+geo_augment:
+  enabled: true
+  sy_min: 1.0
+  sy_max: 1.0
+  roll_deg: 0.0
+  trapezoid: 0.0
+  mirror_p: 0.0
+  k: 8
+  kp_conf_min: 0.3
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/fall_F3geo_dupctrl_k8_s20260826

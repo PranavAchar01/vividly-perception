@@ -1,0 +1,25 @@
+# Push 3 P4 gate: score the fold-F2 validation surface (pat02 and pat09, the trainer's
+# own holdout for this recipe) with the exported verifier from conv_p3harm/f2_s1.
+# Pre-declared in research/seizure-push-3-protocol.md (commit bfd7839): the
+# WindowSpec is the training spec unchanged; the run must report n_windows 902 and
+# n_window_pos 136, and any deviation is a stop-and-report.
+# Recorded outcome: this run and its nine siblings each reported n_windows 902 and
+# n_window_pos 136 (research/seizure-push-3-protocol.md).
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2pose
+  locations:
+  - pat02
+  - pat09
+model:
+  onnx: outputs/verifier/conv_p3harm/f2_s1/verifier.onnx
+out_dir: outputs/verifier/conv_p3harm/f2_s1/eval_valF2

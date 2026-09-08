@@ -1,0 +1,64 @@
+# Joints lane, row 3 of 3, the v2 pose model of record on the deployed path with flip TTA
+# (2026-09-05).
+#
+#   uv run python scripts/pose/eval_pose_ladder.py \
+#       --config configs/eval/coco500_pose_v2_6ba96285_flip.yaml
+#
+# The only difference from configs/eval/coco500_pose_v2_6ba96285_noflip.yaml is
+# `pose.backend: rtmlib_flip`. Same ONNX, same digest, same detector, same subset, same
+# decode. So the row-2 to row-3 delta isolates exactly one of the three ways the deployed
+# path departs from the trainer-side 0.774115: the trainer ran with `flip_test=True` and
+# the deployed path does not. (The other two, detector boxes instead of ground truth and
+# ONNX/rtmlib numerics instead of the torch eval loop, are not switchable and are not
+# separated by this ladder.)
+#
+# Cost. Flip TTA is two forwards per person crop, and the measured cost is 1.63 times the
+# pose stage, 20.21 to 32.86 milliseconds per person crop (final_models/joints/README.md),
+# because only the network forward is duplicated. That is why it is a distinct backend key
+# rather than a flag: a latency row must not be able to change cost class without the
+# config saying so. Whether the accuracy is worth the second forward is an owner decision,
+# not this config's.
+#
+# Implementation: src/vividly/models/rtmlib_pose_flip.py mirrors the preprocessed crop,
+# permutes the COCO L/R channel pairs, reverses the X SimCC vector only, averages the two
+# SimCC pairs and decodes once. That is mmpose's own `flip_vectors` contract, with no
+# heatmap-style half-bin shift (the SimCC path has none). Pinned by
+# tests/test_pose_flip_tta.py, including a mirror-equivariance check against
+# final_models/joints/model.onnx, the graph this row runs.
+#
+# Note: the ONNX is committed at final_models/joints/model.onnx (54,369,587 bytes), whose
+# digest is the one pinned below. It is a Git LFS object, so run `git lfs pull` on a fresh
+# clone before this row.
+schema_version: 1
+run_name: coco500_pose_v2_6ba96285_flip
+
+dataset:
+  registry_name: coco
+  split: val
+  subset_file: configs/eval/subset_coco_val_person500.json
+
+detector:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.zip
+  input_size: [640, 640]
+  device: cpu
+  score_thr: 0.05
+  name: rtmdet-m-person-onnx
+  sha256: 4f4d7e07350b1753299111d1ae500fd64447a5b0e38e4bacbefab6573c742d30
+
+pose:
+  backend: rtmlib_flip
+  onnx: final_models/joints/model.onnx
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-person-v2-onnx-6ba96285-flip
+  sha256: 6ba9628506a8899d3a3e940dcc8af5d30342921f09d2605afa505b57453d3527
+
+tracker: null
+
+conditions:
+  - name: clean
+    kind: passthrough
+
+logging:
+  out_root: outputs/eval

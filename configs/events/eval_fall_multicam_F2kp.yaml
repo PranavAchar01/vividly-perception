@@ -1,0 +1,27 @@
+# Fall push v3 exam look: F2 (fall_kpgeo_v1) median-val seed 20260826
+# (ckpt 0d6f4eb3 / onnx e7cb3777). One pre-declared look per
+# research/fall-push-v3-protocol.md, taken because the kp arm's 5-seed
+# holdout mean (0.99787) beat the 5-seed control mean (0.98639) by more than
+# the control spread (0.00442).
+# Clone of eval_fall_multicam_F0.yaml; model.onnx and out_dir differ, and window.kp_channels: true
+# (the eval spec must equal the training spec, because the graph takes 23 channels).
+# The exam surface and its labelling are identical across every arm:
+# kp_channels appends model-input columns only, labels never read it.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_F2kp.yaml
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+  kp_channels: true
+sources:
+  - dir: outputs/events/multicam_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_F2kp_s20260826/verifier.onnx
+out_dir: outputs/verifier/fall_F2kp_s20260826/eval_multicam

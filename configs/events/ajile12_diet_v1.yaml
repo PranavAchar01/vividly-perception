@@ -1,0 +1,13 @@
+# AJILE12 negative diet v1 (research/seizure-push-1-protocol.md, arm B).
+# Labelled-normal spans only (diet rule in configs/datasets/ajile12.yaml).
+# ~2h total, subject round-robin, <=3min/session, 120s segments, seeded.
+#
+#   uv run python scripts/data/assemble_ajile12_diet.py --config configs/events/ajile12_diet_v1.yaml
+#
+sessions_dir: data/train_prototype/ajile12/sessions
+out_dir: outputs/events/ajile12_neg_tracks_v1
+segment_s: 120.0
+min_span_s: 30.0
+per_session_cap_s: 180.0
+total_cap_s: 7200.0
+seed: 20260905

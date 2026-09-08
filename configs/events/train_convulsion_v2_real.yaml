@@ -1,0 +1,47 @@
+# seizure final_v2: the shootout winner's recipe (finalv1real) rebuilt on the generation 2
+# upgrade stack, adopted on 2026-08-26 after the shootout verdict.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_v2_real.yaml
+#
+# Three additive changes from train_convulsion_v1_real.yaml, each independently
+# motivated in research/event-verifier-v1-record.md, and nothing else changes
+# (same architecture, same window geometry, same patients, same seed), so the
+# v1 against v2 delta is attributable to the stack, not to tuning drift:
+#   1. Eyes: sources point at outputs/events/wu_sahzu_tracks_v2, the chained prototype
+#      re-extraction, which tracks more people on these wall cameras.
+#   2. Scene channels: window.scene_channels adds track density and birth-rate
+#      features. Convulsions shatter the tracker into 17 to 33 fragments against 1 to
+#      2 when calm, and caregiver activity does not, which is the measured separator
+#      between a seizure and a nurse.
+#   3. Calibration: the trainer now fits a temperature on its own train-side
+#      validation split, so scores are thresholdable margins instead of the v1
+#      0.49 to 0.53 collapse.
+# Patient split unchanged and registry-enforced (wu_sahzu_emu_trainsplit):
+# train pat01/02/05/13 only; the test patients never appear here.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v2
+    locations: [pat01, pat02, pat05, pat13]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v2_real

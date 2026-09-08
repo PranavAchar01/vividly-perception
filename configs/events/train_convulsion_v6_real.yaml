@@ -1,0 +1,81 @@
+# seizure v6, pre-declared recipe (2026-08-27, committed before any
+# training or evaluation ran; anti-overfitting protocol).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_v6_real.yaml
+#
+# Exactly one change from train_convulsion_v2_real.yaml (the incumbent model,
+# 07c399be): the negative diet, built this time to obey the law the last two
+# exams measured. v4 (ONNX 6d205fee) proved the recall ceiling (13/13, every event
+# max >= 0.826) but its overhead-ward negatives did not quiet the side-view
+# EMU rooms (negative time-in-alarm 95.7% @0.5 against 72.4% for 07c399be), and fall v2
+# measured the same law from the other side. The lever v6 pulls is quiet footage
+# whose geometry matches the deploy view: the ADL clips of the admitted
+# acted-fall sets, gmdcsa24 and caucafall (healthy people walking, sitting,
+# sleeping and kneeling in home rooms, at eye-level and upper-corner angles; the
+# recipe direction recorded on 2026-08-27 is to train on quiet footage in which
+# nothing is happening), extracted through the same chained eyes (55c2c242) as
+# wu_sahzu_tracks_v2 so positives and negatives share one detector stack.
+#
+# Scope note, recorded up front: these are home rooms with actors, not EMU
+# hospital rooms with patients in beds, so the diet addresses side-view quiet
+# humans rather than EMU rooms specifically. Real EMU-like negatives remain an
+# owner decision if this diet moves quiet without buying the geometry-mismatch
+# failure.
+#
+# Negative selection is deliberate, never a side effect:
+#   - gmdcsa24: ADL locations only (S1_ADL..S4_ADL). Staged falls as explicit
+#     seizure negatives would be a separate pre-declared decision, because
+#     convulsive seizures can involve collapses, and forcing collapse motion to 0
+#     could buy quiet at recall cost. Not taken here.
+#   - caucafall: locations are subjects (falls and ADLs share them), so the
+#     quiet clips are selected with no_event_only, that is videos whose resolved
+#     event is empty, the trainer feature added with this recipe and tested in
+#     tests/test_verifier_features.py.
+#   - force_label: 0 on both, making intent explicit (their windows are
+#     already all-negative by construction).
+#
+# Same patients, same window geometry, same architecture and same seed as v2 and
+# v4, so the v2 to v6 delta is attributable to the negative diet alone, and the
+# v4 to v6 comparison is the overhead-ward diet against the matched-geometry
+# quiet diet. Exam protocol: at most one held-out look
+# (eval_wusahzu_testsplit_v6real.yaml) after training completes; no variant
+# selection on test. Numbers to beat, for the incumbent 07c399be (corrected 0.944 h
+# denominator): at 0.5, 12/13 events, 6/6 PG, negative time-in-alarm 72.4%; at 0.8,
+# 8/13 events, 4/6 PG, 39.2 FP episodes/h. The target is
+# v2@0.5-level catches with roughly v2@0.9-level quiet.
+# That single look was taken: this recipe produced convulsion_v6_real, ONNX 10cdbe78,
+# which scored a testsplit window AUC of 0.67447 against 0.69841 for 07c399be and was
+# rejected (final_models/seizure/README.md).
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v2
+    locations: [pat01, pat02, pat05, pat13]
+  - dir: outputs/events/gmdcsa24_tracks_v2chained
+    locations: [S1_ADL, S2_ADL, S3_ADL, S4_ADL]
+    force_label: 0
+  - dir: outputs/events/caucafall_tracks_v2chained
+    no_event_only: true
+    force_label: 0
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v6_real

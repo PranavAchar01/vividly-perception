@@ -1,0 +1,15 @@
+diff --git a/tools/deployment/export_onnx.py b/tools/deployment/export_onnx.py
+--- a/tools/deployment/export_onnx.py
++++ b/tools/deployment/export_onnx.py
+@@ -69,7 +69,11 @@
+         input_names=['images', 'orig_target_sizes'],
+         output_names=['labels', 'boxes', 'scores'],
+         dynamic_axes=dynamic_axes,
+         opset_version=17,
+         verbose=False,
+         do_constant_folding=True,
++        # torch >= 2.9 defaults to the dynamo exporter (requires onnxscript, emits a
++        # different graph family); the acceptance path pins the legacy TorchScript
++        # exporter at opset 17. First hit on the training pod, 2026-09-05.
++        dynamo=False,
+     )

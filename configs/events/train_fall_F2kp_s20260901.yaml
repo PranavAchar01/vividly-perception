@@ -1,0 +1,48 @@
+# Fall push v3, arm F2, fall_kpgeo_v1, seed 20260901. Pre-declared in
+# research/fall-push-v3-protocol.md, 2026-09-05. Arm F1, overlap labelling,
+# failed the false-alarm gate, so F2 runs on the unchanged `contain` labelling.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_F2kp_s20260901.yaml
+#
+# Clone of the same-seed F0 control config train_fall_F0_s20260901.yaml with
+# exactly two changes:
+#   1. window.kp_channels: true, which appends the 15 keypoint channels to the 8
+#      base channels. Those are per-step keypoint geometry: torso cosine and
+#      sine, spine-compression extents, head vertical velocity in torso lengths,
+#      and hip-centred wrist and ankle offsets, each with a validity flag gated
+#      at kp_conf_min 0.3. The v2pose trees carry full COCO-17 keypoint rows,
+#      that is emit_keypoints: true.
+#   2. out_dir.
+# The control arm is the same 5 seeds without kp_channels, in
+# outputs/verifier/fall_F0_s*.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+  kp_channels: true
+sources:
+  - dir: outputs/events/le2i_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+holdout_locations: [Home_02, S4_ADL, S4_Fall, S9, S10]
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260901
+  device: cpu
+out_dir: outputs/verifier/fall_F2kp_s20260901

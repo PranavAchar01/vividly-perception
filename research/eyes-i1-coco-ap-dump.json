@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "recorded": "2026-09-05",
+    "written_by": "research/eyes-instrument-grading.md",
+    "split": "person_v2 dev-val, Warehouse_005 held out by scene, 1,800 images and 33,755 boxes",
+    "ground_truth_file": "person_v2_devval.json",
+    "ground_truth_sha256": "bc9bedadbcf33cc7d06e5171cd08f091d6a8f1f974ba2e3e1083a34195dd89dc",
+    "checkpoint_sha256_dets_b1_rtv4s_seed0": "345c30a539c2b6bb665302825f418322284b98f6cbcf55d58d84ffeb75b16e7e",
+    "checkpoint_sha256_dets_deim_s_seed1": "e98de401670d34d61d03100974eb72449607b319611ff454e8a865cd07b81147",
+    "onnx_sha256_export_of_345c30a5": "4026204967aa01a7680f7ce0c6169463d654a519f8093383a10537321f56fd49",
+    "note": "AP values graded with pycocotools from the recorded detection dumps named in research/eyes-instrument-grading.md; each row is one view of the checkpoint named above for its prefix."
+  },
+  "dets_b1_rtv4s_seed0_identity": {
+    "AP": 0.8355529763877473,
+    "AP50": 0.9581179414322138,
+    "AP75": 0.8825587847079245,
+    "AP_s": 0.12767198181471506,
+    "AP_m": 0.722356049304119,
+    "AP_l": 0.9307467640164161,
+    "AR100": 0.8596119093467633
+  },
+  "dets_deim_s_seed1_identity": {
+    "AP": 0.8341295846934769,
+    "AP50": 0.9580204271712782,
+    "AP75": 0.8817154212129705,
+    "AP_s": 0.1265013694125986,
+    "AP_m": 0.7207226171693996,
+    "AP_l": 0.9298510974614712,
+    "AR100": 0.8585335505850985
+  },
+  "dets_b1_rtv4s_seed0_hflip": {
+    "AP": 0.836092644937307,
+    "AP50": 0.9582010168879901,
+    "AP75": 0.8825151289685983,
+    "AP_s": 0.11704840933257728,
+    "AP_m": 0.7241008017344965,
+    "AP_l": 0.9307051153612043,
+    "AR100": 0.8601984891127241
+  },
+  "dets_deim_s_seed1_hflip": {
+    "AP": 0.8342329073455331,
+    "AP50": 0.958319145131427,
+    "AP75": 0.8815333988190812,
+    "AP_s": 0.1297768752734602,
+    "AP_m": 0.7197579573418736,
+    "AP_l": 0.930227112574252,
+    "AR100": 0.8581069471189451
+  },
+  "dets_b1_rtv4s_seed0_tta_wbf": {
+    "AP": 0.7932833456801578,
+    "AP50": 0.9342363270317484,
+    "AP75": 0.8389825614180976,
+    "AP_s": 0.11188529583436999,
+    "AP_m": 0.6717900653775177,
+    "AP_l": 0.8936044179897135,
+    "AR100": 0.8188209154199377
+  },
+  "dets_deim_s_seed1_tta_wbf": {
+    "AP": 0.7914370291221706,
+    "AP50": 0.933798367508689,
+    "AP75": 0.8378946834004679,
+    "AP_s": 0.11595409000608166,
+    "AP_m": 0.6653473113989413,
+    "AP_l": 0.8926685023461884,
+    "AR100": 0.817813657235965
+  }
+}

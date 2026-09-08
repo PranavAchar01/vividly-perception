@@ -1,0 +1,44 @@
+# seizure final_v3: the v2 recipe with one change, the eyes. Commissioned on
+# 2026-08-26 against the target of keeping the catches v2 makes at
+# threshold 0.5 while reaching the quiet v2 has at threshold 0.9.
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_v3_real.yaml
+#
+# The decision-layer study (research/event-verifier-v1-record.md) proved no
+# alerting rule on v2's scores reaches that target, so the separation must come
+# from the model. The measured lever is detection quality in crowded frames:
+# sources point at outputs/events/wu_sahzu_tracks_v3, the chained-lr25 generation 2
+# re-extraction, which at the time measured ahead of the chained detector on held-out
+# instrument sets that have since been retired under POLICY.md, rule 1.
+# Everything else is byte-identical to train_convulsion_v2_real.yaml: same
+# architecture, window geometry, scene channels, calibration, patients and seed,
+# so the v2 against v3 delta is attributable to the eyes alone.
+# Patient split unchanged and registry-enforced (wu_sahzu_emu_trainsplit):
+# train pat01/02/05/13 only; the test patients never appear here.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v3
+    locations: [pat01, pat02, pat05, pat13]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v3_real

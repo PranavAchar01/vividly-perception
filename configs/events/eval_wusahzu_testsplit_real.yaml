@@ -1,0 +1,27 @@
+# Variant comparison, test side: variant "real" against the six exam-side
+# WU-SAHZU patients.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_wusahzu_testsplit_real.yaml
+#
+# The test split is identical for all three variants, which is the point of the
+# comparison: pat03, pat07 and pat14 are convulsive PG, 6 events, the class that
+# matters; pat04, pat09 and pat11 are focal P, reported separately; all 3
+# non-seizure recordings are included, because they live on test patients. The
+# train patients pat01, pat02, pat05 and pat13 are excluded by the locations
+# filter, and disjointness is pinned by tests. The window must equal the training
+# window, 12/3/64 overlap 4.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v1
+    locations: [pat03, pat07, pat14, pat04, pat09, pat11]
+model:
+  onnx: outputs/verifier/convulsion_v1_real/verifier.onnx
+out_dir: outputs/verifier/convulsion_v1_real/eval_wusahzu_testsplit

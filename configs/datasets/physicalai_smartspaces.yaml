@@ -1,0 +1,159 @@
+schema_version: 1
+name: physicalai_smartspaces
+display_name: NVIDIA PhysicalAI-SmartSpaces (MTMC_Tracking_2025 slice)
+task: [detection, tracking, reid]
+bucket: TRAIN_OK
+status: available
+licensing:
+  license: CC BY 4.0
+  license_url: https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces
+  license_verbatim: >
+    Hugging Face dataset card license identifier: cc-by-4.0 (Creative Commons
+    Attribution 4.0 International). No additional terms-of-use wording appears on the
+    card (verified 2026-08-31).
+  license_conflict_note: >
+    Split-licence hazard, recorded by the re-identification licence pass of 2026-09-03
+    (research/reid-data-licences.md): the same bytes carry an incompatible
+    "no commercial or production purpose" agreement when acquired through the AI City
+    challenge portal. Acquisition is therefore restricted to Hugging Face permanently,
+    and nobody registers for the challenge portal. Separately, the card's responsible-AI
+    metadata states that the dataset "is not authorized for use in biometric, facial
+    recognition, demographic profiling, or surveillance systems targeting real
+    individuals", which is a stated publisher position rather than a term of CC BY 4.0
+    (that grant is irrevocable and carries no field-of-use restriction). The point is
+    escalated as CQ-27 in docs/COUNSEL_QUESTIONS.md. CQ-27 gates shipped weights in the
+    re-identification lane only: the conservative posture recorded there is
+    prototype-class re-identification weights under the prototype weight class, with
+    nothing shipping until counsel clears it. It does not reopen the detection and
+    tracking training this bucket already covers, so it is recorded here as a note
+    rather than in counsel_questions, and the mechanical TRAIN_OK gate stays green for
+    the lanes it was granted for.
+  commercial_use: permitted
+  attribution_required: true
+  redistribute: false
+  counsel_questions: []
+  counsel_cleared_utc: null
+  terms_acceptance:
+    accepted_by: owner
+    accepted_utc: "2026-08-31T08:45:00Z"
+    method: >
+      ungated public Hugging Face dataset repo; no click-through terms; CC BY 4.0 on
+      the card; the slice fetch was authorised by the owner
+    evidence_path: null
+provenance:
+  collector: NVIDIA (Physical AI / Metropolis, AI City Challenge organizers)
+  imagery_source: >
+    synthetic Omniverse-rendered indoor scenes (warehouses, one hospital, one lab)
+    populated with simulated human characters and robots; no real people appear in
+    the MTMC_Tracking_2025 subset (the two real warehouse scenes of the 2026 subset
+    are not part of the admitted slice)
+  contains_real_people: false
+  simulated_medical_events: false
+  citation: >
+    NVIDIA PhysicalAI-SmartSpaces, Hugging Face dataset nvidia/PhysicalAI-SmartSpaces
+    (MTMC_Tracking_2025; 8th AI City Challenge Track 1 lineage).
+acquisition:
+  method: huggingface
+  human_required: false
+  urls:
+    - https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces
+  human_steps: []
+layout:
+  root: data/train_ok/physicalai_smartspaces
+  images: {train: MTMC_Tracking_2025/train, val: MTMC_Tracking_2025/val}
+  annotations: {train: MTMC_Tracking_2025/train, val: MTMC_Tracking_2025/val}
+ann_format: aicity_mtmc_json
+# Driven by scripts/data/convert_smartspaces.py under
+# configs/convert/smartspaces_train_v1.yaml.
+converter: vividly.data.convert.mtmc_to_coco
+hashes_unavailable_reason: >
+  Hugging Face tree slice of about 10 scenes (hundreds of per-camera video files plus
+  ground-truth JSON); fetch integrity is delegated to the hub's content-addressed
+  transfer at download time. A per-file sha256 ledger is impractical at this file
+  count, so per-scene sizes and file counts are recorded in counts at the flip to
+  status available.
+counts:
+  scenes_in_slice: 10
+  camera_videos: 281      # per-camera mp4s, verified on disk 2026-08-31
+  ground_truth_files: 10  # one ground_truth.json per scene (all present)
+  calibration_files: 10   # one calibration.json per scene (all present)
+  depth_h5_files: 0       # depth exclusion verified: zero .h5 anywhere in the slice
+  size_gb_on_disk: 38
+  # per-scene (GB, mp4 count): train W000 3.5/25, W001 6.5/42, W002 5.1/45,
+  # W003 4.5/30, W004 5.6/42, W005 4.4/30; val Hospital_000 2.7/32, Lab_000 1.1/10,
+  # W015 2.8/13, W016 1.7/12
+derived_from: []
+notes: >
+  Slice definition (2026-08-31, under a 70 GB storage cap set by the owner): the
+  complete val split of MTMC_Tracking_2025, that is Hospital_000, the only hospital
+  scene in the 2025 edition, plus Lab_000, Warehouse_015 and Warehouse_016, together
+  with train scenes Warehouse_000 to Warehouse_005. RGB videos, ground truth and
+  calibration only; depth_maps are excluded, because the 2025 subset is 3.31 TB with
+  depth maps and about 70 GB without, so the slice lands well under the cap.
+  The val scenes are exam-side: they are frozen-exam material for the v2 detection
+  exam, selection never touches them, and a val scene that ever enters a training
+  manifest loses its exam role permanently. The split config
+  configs/convert/person_v2_manifests.yaml enforces that rule today: it admits
+  Warehouse_000 to Warehouse_004 to the training manifest, holds Warehouse_005 out as
+  the dev-val scene, and refuses any val input outright. The bucket does not enforce
+  it; the bucket is TRAIN_OK because the licence permits training and the train-side
+  scenes do train.
+  Box convention (decided 2026-08-31 in the second sim-to-real pass): the house
+  convention of the v2 lane is visible-region boxes, which is exactly what this set's
+  2d_bounding_box_visible annotations are, so the released boxes are used as they
+  stand with no amodal re-derivation. The AI City teams that needed amodal boxes were
+  solving a 3D task that this stack does not have.
+  Diversity caveat: the 2025 edition holds only 292 unique person identities across
+  73M boxes, which is deep in the steep region of every published per-identity scaling
+  curve, and the distinct mesh count is undisclosed. The mesh audit recorded below ran on
+  that concern, failed, and put the 2024 edition under the same suspicion.
+  Leakage: never split a Cosmos-Transfer re-rendered scene and its source twin across
+  train and eval (the 2026 pairs 001/003/005/007/021/024 are re-renders of
+  000/002/004/006/020/023), and a synthetic val score is never quoted as deployment
+  evidence.
+  Must-beat-real-baseline caveat, from the same sweep: across AI City 2023 to 2025 no
+  top team shipped a synthetic-trained detector onto real scenes. The 2024 winner used
+  an off-the-shelf real-data detector and trained nothing, and the MCBLT reference from
+  NVIDIA trains its 2D detector on real data and uses the synthetic data only for the
+  3D head. This set therefore enters the v2 comparison as a pre-training and
+  augmentation candidate that must beat the plain COCO-pretrained baseline on the
+  frozen exams to earn a place in the recipe; it is not presumed to be an anchor.
+  The humans are synthetic and there are no acted medical events, so the rule barring
+  acted medical events (POLICY.md, rule 4) is unaffected. The 2024 edition
+  (MTMC_Tracking_2024) holds the hospital-corridor scenes with 2D-only ground truth and
+  is a candidate follow-up admission once its scene-type mapping is established; it is
+  not in this slice.
+  Re-identification admission (2026-09-03, research/reid-data-licences.md): obj_id is
+  documented by the card as "Consistent numeric identifier for each object across
+  cameras", that is, true cross-camera identity supervision. Measured on this slice:
+  274 train-side identities; 597,903 crops >=48x96 (434,494 >=64x128) at the 1 Hz
+  frames already extracted for the detector corpus; median 2,315 crops per identity
+  across a median 22 to 41 cameras per identity; concurrent people per view median 8,
+  p99 23.
+  Mesh audit result (2026-09-03, research/reid-smartspaces-mesh-audit.md): the
+  mandatory pre-GPU visual audit ran and failed. All 231 identities on the 5
+  detector-train scenes were reviewed, and the corpus is about 35 to 45 distinct avatar
+  builds recycled under those labels, with same-scene look-alike pairs (002:1 against
+  002:7). The resulting rule is that identity-discriminative embedder training on this
+  set is excluded, because the metric-loss targets contradict each other and the
+  effective identity count is about 40. The permitted re-identification roles are
+  positive-pair-only view-invariance pretraining, and session and tracker-association
+  structure prototyping. Detection and tracking training are unaffected, since the box
+  and track labels stay correct. The 2,481 identities of MTMC_2024 inherit the same
+  suspicion, so sample-audit 2 scenes before any fetch or GPU spend.
+  Re-identification manifest rule: Cosmos-Transfer re-rendered scenes are excluded from
+  re-identification manifests, because NVIDIA discloses that CT2.5 is "single-view
+  rather than multi-view-consistent, so the same object may look subtly different
+  across simultaneous camera views", which is label noise by construction for a
+  cross-camera identity objective. They may remain in detection manifests, subject to
+  the leakage pairing rule above.
+  Acquisition record (2026-08-31): two command-line issues were hit during the fetch
+  and are recorded so they are not repeated. First, `hf download --exclude` is silently
+  ignored when --include is present, so the first run pulled 40 GB of depth .h5 files
+  before the cap check caught it; the fix is include-only patterns naming videos,
+  *.json, *.txt and *.png per scene. Second, mid-path wildcards such as
+  val/*/videos/* silently match nothing; explicit per-scene patterns worked for three
+  val scenes, but the tool still skipped the videos of Hospital_000, and those 32 files
+  were fetched directly from the Hugging Face resolve endpoint with urllib and per-file
+  size verification, 32 of 32 matched.
+files: []

@@ -1,0 +1,46 @@
+# finalv1real: convulsion verifier trained only on real EMU seizure data (shootout
+# variant; registry entry wu_sahzu_emu_trainsplit, event_grant train_interim).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_v1_real.yaml
+#
+# Data = the four train-side convulsive (PG) patients' extractions only (pat01,
+# pat02, pat05, pat13, carrying 8 real tonic-clonic events). Positives are windows
+# overlapping the expert-labelled ictal interval >= 4 s; negatives are every other
+# window in the same recordings (pre-onset ward activity, visitors, nursing checks,
+# post-ictal stillness). Focal (P) patients are excluded from training entirely:
+# their event windows are label-uncertain for a convulsion head (motion may be
+# absent), and force-labelling them either way would teach a lie. The v1 shootout's
+# test patients (pat03/07/14 PG + pat04/09/11 P + all negatives) never appear here: the
+# `locations` filter enforces the patient split, and tests pin the disjointness. That
+# split is the shootout's own; the later rotation push retired the testsplit as an exam
+# and moved pat14, pat04, pat09 and pat11 into the rotation training pool
+# (research/seizure-push-1-protocol.md).
+#
+# Window must equal the other shootout variants' window; the shootout compares
+# models, not geometries.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v1
+    locations: [pat01, pat02, pat05, pat13]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v1_real

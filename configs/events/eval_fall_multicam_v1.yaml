@@ -1,0 +1,25 @@
+# Fall verifier v1 against the Montreal Multi-Cam extraction, which is test only under
+# the registry event grant (POLICY.md, rule 6).
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_v1.yaml
+#
+# window: must equal the window in configs/events/train_fall_verifier_v1.yaml, because
+# the graph's input geometry pins n_steps and the time scale pins window_s.
+# Multi-event videos (chute04, chute23) label through meta events_t; chute24 is the
+# staged confounder video (crouching plus moving-down, no fall), so a detection there
+# at any threshold is a headline false alarm, not a statistic.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v1/verifier.onnx
+out_dir: outputs/verifier/fall_v1/eval_multicam

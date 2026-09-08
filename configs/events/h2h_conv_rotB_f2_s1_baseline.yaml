@@ -1,0 +1,47 @@
+# H2h control run A: an unchanged baseline reproduction of the arm-B fold-F2 seed-1 recipe.
+# Report-only (research/seizure-push-2-protocol.md item 4 authorizes H2h;
+# record in research/seizure-ajile12-negative-control.md). Byte-identical to
+# configs/events/rot_train_conv_rotB_f2_s1.yaml except `out_dir`, which points at a
+# gitignored scratch dir so the committed conv_rotB run is never overwritten. Expected:
+# val_auc_best 0.75479, onnx sha8 b9e04d03 (determinism already proven twice in
+# outputs/verifier/_repro); any mismatch is a stop-and-report, not a result.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+- dir: outputs/events/wu_sahzu_tracks_v2pose
+  locations:
+  - pat01
+  - pat02
+  - pat04
+  - pat05
+  - pat09
+  - pat11
+  - pat13
+  - pat14
+- dir: outputs/events/ajile12_neg_tracks_v1
+  force_label: 0
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/h2h/a_baseline
+holdout_locations:
+- pat02
+- pat09

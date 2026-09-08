@@ -1,0 +1,102 @@
+# Vividly zero-footage egress demo, the third head of the acute-event rule set:
+# egress_without_discharge_v0.
+#
+#   uv run python scripts/run_pipeline.py --config configs/pipeline/egress_demo.yaml --headless
+#
+# What this runs. The replay pipeline with the egress head attached: TrackBook, the two
+# event rules, the EgressMonitor (vividly.rules.egress) with one configured exit zone, the
+# debouncing engine, the SQLite alert store and the dashboard payload. It reads generated
+# tracker observations from a JSONL fixture, so it needs no model weights, no video, no cv2,
+# no numpy and no network.
+#
+# What it demonstrates, in one sentence: a person who sits, walks out through the door and
+# does not come back produces exactly one egress candidate, with its onset at the moment
+# they were last seen, and the patrol track that walks around the whole time produces
+# nothing. Tag the departed person discharged, from the dashboard Departures panel or with
+# POST /departures/1/discharged, before the clock runs out, and nothing fires at all. The
+# discharge gate is the head's primary false-positive guard.
+#
+# What the fixture is. tests/fixtures/pipeline_synth/egress_scene.jsonl: 220 simulated
+# seconds at 2 observation batches per second. Track 1 fidgets in a seat for 60 s, walks to
+# the exit zone over 10 s, is last seen at t = 70, and is not observed again; track 99 walks
+# a patrol for the whole scene and never enters the zone. Generated in closed form by
+# tests/test_egress.py::build_egress_scene with no random number generator and no clock,
+# regenerated and compared byte for byte by that test, so it cannot drift. It is not a
+# medical event of any kind and it is not training or evaluation data (POLICY.md, rule 4):
+# it is points moving on a plane.
+#
+# Thresholds. Every value below is PROVISIONAL (the acute-event rule set, POLICY.md;
+# docs/CALIBRATION.md) and two of them are DEMO-SHRUNK so a 220 second fixture can contain a
+# departure, a reap and an egress clock running out: egress_absent_min_s 600 becomes 90 and
+# egress_min_presence_s 120 becomes 45. The shipped values are in
+# configs/pipeline/rules.yaml, and every other threshold keeps its shipped default. Do not
+# quote any number from this run, and do not read its firing count as a false-alarm rate.
+#
+# There is no `verify:` block, on purpose, for two reasons. First, as in
+# synthetic_demo.yaml, the fixture is abstract points, so a trained head scored against it
+# would be reading motion no camera produced. Second, the head this config exists to
+# demonstrate has no verifier at all: an egress firing's subject is a track the book already
+# reaped, so the engine hands the verifier `track=None` and any backend must answer
+# "unavailable" for it; see vividly.rules.verify. The measured PROVISIONAL operating points
+# for the two heads that do have graphs are wired in configs/pipeline/replay_demo.yaml and
+# recorded in research/operating-points.md, 2026-09-05.
+schema_version: 1
+
+run_name: egress_demo
+
+headless: true
+
+# --- zero-footage source ------------------------------------------------------
+detections_from: tests/fixtures/pipeline_synth/egress_scene.jsonl
+
+# --- track layer --------------------------------------------------------------
+tracks:
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md) and DEMO-SHRUNK:
+  # the shipped placeholder is 30 s. 8 s is what lets a short fixture contain a departure
+  # and its reap; the egress head only notices a departure at reap time.
+  reap_after_s: 8.0
+  # PROVISIONAL (the acute-event rule set, POLICY.md) and DEMO-SHRUNK from 300 s so the
+  # alert record carries a populated baseline. It is not a claim that 15 s characterises
+  # anyone.
+  baseline_window_s: 15.0
+  # PROVISIONAL (the acute-event rule set, POLICY.md): shipped placeholder, unchanged.
+  kp_conf_min: 0.3
+  # Ring sizing, not a threshold: 600 s of history at the fixture's 2 Hz cadence.
+  fps: 2.0
+  ring_window_s: 600.0
+  # PROVISIONAL (the acute-event rule set, POLICY.md) and DEMO-SHRUNK from 30 so the 15 s
+  # baseline completes at 2 Hz.
+  baseline_min_samples: 10
+
+# --- rule thresholds ----------------------------------------------------------
+# Stated inline rather than through `rules_config:` because two egress thresholds are
+# demo-shrunk and a run has to be able to say which file its numbers came from. Everything
+# not named here keeps the RuleConfig default, which tests/test_rules.py pins equal to
+# configs/pipeline/rules.yaml.
+rules:
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md), DEMO-SHRUNK
+  # from 600 s.
+  egress_absent_min_s: 90.0
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md), DEMO-SHRUNK
+  # from 120 s.
+  egress_min_presence_s: 45.0
+
+# --- the egress head ----------------------------------------------------------
+# Per-site geometry in source-frame pixels, on a nominal 1920x1080 frame here. `enabled:
+# false`, the shipped default everywhere else, builds no monitor at all.
+egress:
+  enabled: true
+  zones:
+    - name: main door
+      polygon: [[1640, 380], [1920, 380], [1920, 700], [1640, 700]]
+
+# --- outputs ------------------------------------------------------------------
+output:
+  dir: outputs/pipeline
+
+# --- dashboard (used only when this run is not headless) ----------------------
+dashboard:
+  host: 127.0.0.1
+  port: 8603
+  stream_hz: 4.0
+  alert_limit: 25

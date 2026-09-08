@@ -1,0 +1,47 @@
+# Perspective-domain control for the generation 2 fall-extraction decision (2026-08-26).
+#
+#   uv run python scripts/eval/eval_runner.py --config configs/eval/coco500_eyes_stockm.yaml
+#
+# It measures stock rtmdet-m person at 640, the exact v1 extraction operating eyes, with
+# body7 pose behind it, on the frozen 2026-08-07 COCO val person-500 subset, clean
+# condition only, so the metric is person AP on undegraded perspective imagery. It was the
+# incumbent leg of a comparison whose candidate leg is not carried here, because the
+# prototype detector weight it named is retired under POLICY.md, rule 1.
+# It survives because its recorded run coco500_eyes_stockm_20260826_111338_2db41bba is the
+# value the deployed-path pose ladder reproduces before its own rows may run
+# (configs/eval/coco500_pose_body7_e48f03d0.yaml, the gate block).
+schema_version: 1
+run_name: coco500_eyes_stockm
+
+dataset:
+  registry_name: coco
+  split: val
+  subset_file: configs/eval/subset_coco_val_person500.json
+
+detector:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.zip
+  input_size: [640, 640]
+  device: cpu
+  score_thr: 0.05                        # low on purpose: COCO mAP needs the tail
+  name: rtmdet-m-person-onnx
+  # Cached ONNX digest, recorded on final_models/joints/README.md; the 235e8209 token in
+  # the URL is the upstream .pth digest prefix, not the graph's.
+  sha256: 4f4d7e07350b1753299111d1ae500fd64447a5b0e38e4bacbefab6573c742d30
+
+pose:
+  backend: rtmlib
+  onnx: https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-body7-onnx
+  sha256: 5c0a4bf67953e6d2ac43ce15e77dc9d5d354ae18430a47d2c5963a7bc5683e3c
+
+tracker: null
+
+conditions:
+  - name: clean
+    kind: passthrough
+
+logging:
+  out_root: outputs/eval

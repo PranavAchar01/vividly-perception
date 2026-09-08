@@ -1,0 +1,30 @@
+# Fall verifier v2 against the Montreal Multi-Cam test extraction. The verifier is an
+# interim prototype head under the carve-out in POLICY.md, rule 4: internal demonstration
+# only, never quoted as clinical detection performance.
+#
+#   uv run python scripts/events/eval_event_verifier.py --config configs/events/eval_fall_multicam_fallv2.yaml
+#
+# window: must equal the window the fall v2 arm was trained under, 8.0 s span at a 1.5 s
+# stride over 64 steps under the contain policy; the graph's input geometry pins n_steps and
+# the time scale pins window_s. That training configuration is not carried in this
+# repository, because its negative diet came from the quarantined overhead ward corpora
+# that rule 1 of POLICY.md bars from any training manifest; the arm itself is recorded in
+# research/event-verifier-v1-record.md.
+# Multi-event videos (chute04, chute23) label through meta events_t; chute24 is the
+# staged confounder video (crouching + moving-down, no fall), so a detection there at
+# any threshold is a headline false alarm, not a statistic.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/multicam_tracks_v1
+    event_keys: [fall_start_t, fall_end_t]
+model:
+  onnx: outputs/verifier/fall_v2/verifier.onnx
+out_dir: outputs/verifier/fall_v2/eval_multicam

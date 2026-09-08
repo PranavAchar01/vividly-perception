@@ -1,0 +1,13 @@
+{
+  "lane": "eyes",
+  "kind": "detector",
+  "backend": "rtdetr_onnx",
+  "display_name": "RT-DETRv4-S person v2, seed 0",
+  "onnx": "model.onnx",
+  "onnx_sha256": "4026204967aa01a7680f7ce0c6169463d654a519f8093383a10537321f56fd49",
+  "checkpoint_sha256": "345c30a539c2b6bb665302825f418322284b98f6cbcf55d58d84ffeb75b16e7e",
+  "input_size": [640, 640],
+  "weight_class": "prototype",
+  "training_data": "person_v2, 55,200 training images and 828,230 person boxes converted from the NVIDIA PhysicalAI SmartSpaces MTMC_Tracking_2025 warehouse scenes, with Warehouse_005 held out by scene as the dev-val split.",
+  "backbone_pretrain": "The released RT-DETRv4-S COCO detection weights rtv4_s_coco.pth, sha256 238a3f6537bf3b75b55e73f91f9d4cec8d21259b4908b3f21896f3e038b5a3ee, which were themselves trained with the published distillation teacher; shippability is a question for counsel."
+}

@@ -1,0 +1,38 @@
+# Seizure v3 capacity variant (d4): the v3_real recipe with blocks 3 raised to 4.
+# Part of the 2026-08-27 sweep for more score separation.
+# Selection protocol, which prevents test-set shopping: variants are compared only on
+# the trainer's own train-side val split; at most the single val-winner earns
+# a held-out test evaluation, reported with this selection provenance. The exact
+# train_convulsion_v3_real.yaml row is the v3 row for the v2 against v3 comparison.
+# Patient split unchanged and registry-enforced (wu_sahzu_emu_trainsplit), under the
+# prototype carve-out in POLICY.md, rule 4.
+# Outcome, recorded in research/event-verifier-v1-record.md: all three sweep variants
+# scored below the base run's train-side validation of 0.93659 (convulsion_v3_real,
+# ONNX d85f1a20), so none earned a test look and all were discarded unevaluated.
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v3
+    locations: [pat01, pat02, pat05, pat13]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 4
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v3_d4

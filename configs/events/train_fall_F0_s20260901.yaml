@@ -1,0 +1,43 @@
+# Fall push v3, arm F0 (control floor), seed 20260901, pre-declared in
+# research/fall-push-v3-protocol.md (2026-09-05).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_fall_F0_s20260901.yaml
+#
+# Clone of train_fall_verifier_v2pose.yaml with exactly three changes:
+#   1. holdout_locations pins the protocol's fixed holdout (le2i Home_02,
+#      gmdcsa24 S4_ADL + S4_Fall, caucafall S9 + S10) instead of the seed-drawn
+#      grouped_split. The seed-20260826 grouped_split draw put 126 of 190 positives
+#      in validation, so the earlier no-difference verdict was confounded.
+#   2. seed (this file: 20260901).
+#   3. out_dir, which is outputs/verifier/fall_F0_s20260901.
+# Everything else, window geometry, sources, model and hyperparameters, is identical.
+schema_version: 1
+task: fall
+window:
+  window_s: 8.0
+  stride_s: 1.5
+  n_steps: 64
+  policy: contain
+  min_present: 0.35
+  contain_margin_s: 0.5
+sources:
+  - dir: outputs/events/le2i_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/gmdcsa24_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+  - dir: outputs/events/caucafall_tracks_v2pose
+    event_keys: [fall_start_t, fall_end_t]
+holdout_locations: [Home_02, S4_ADL, S4_Fall, S9, S10]
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260901
+  device: cpu
+out_dir: outputs/verifier/fall_F0_s20260901

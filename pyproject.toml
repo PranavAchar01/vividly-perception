@@ -1,0 +1,227 @@
+# ==============================================================================
+# Vividly: one project, five resolution forks.
+#
+#   uv sync                       macOS arm64 development and harness, no torch
+#   uv sync --extra cuda          Linux x86_64 training, torch >= 2.7 on cu128
+#   uv sync --extra eval-agpl     the AGPL reference environment, which the resolver
+#                                 forbids mixing with cuda
+#   uv sync --extra curate        numpy 2 analysis environment: dataset curation,
+#                                 tracking metrics and the OSNet export toolchain
+#   uv sync --group linux-harness the same harness on Linux, the deployment platform; it is
+#                                 a dependency group rather than an extra, and the conflicts
+#                                 table below keeps it apart from the three extras
+#
+# Verified with uv 0.11.18. Every pin below is load-bearing. The forks and the isolation
+# they enforce are described in POLICY.md and reproduced command by command in TRAINING.md.
+# ==============================================================================
+[project]
+name = "vividly"
+version = "0.1.0"
+description = "Training and evaluation infrastructure for the waiting-room perception lanes."
+requires-python = "==3.11.*"
+dependencies = [
+  # Cross-platform, cross-fork, shippable licence only. No torch and nothing under AGPL.
+  # Anything listed here is shared by every fork, so an exact version pin does not belong.
+  "pyyaml>=6",
+  "pydantic>=2.6,<3",          # versioned event and alert schemas
+  "wandb>=0.17",               # MIT; declares no numpy, so inert against every fork's numpy
+  "supervision>=0.26,<0.31",   # MIT; detections and annotators only, upper bound deliberate
+  # The replay-mode dashboard. All permissive, all inert with respect to numpy.
+  "fastapi>=0.115,<1",         # MIT
+  "uvicorn>=0.30,<1",          # BSD-3
+  "websockets>=13",            # BSD-3; FastAPI WebSocket endpoints run over this
+]
+
+[project.optional-dependencies]
+# ---- (b) Linux x86_64 training on CUDA --------------------------------------
+# Every entry carries a linux marker, so `uv sync --extra cuda` on macOS installs nothing
+# and exits zero. The training pods are Blackwell (sm_120), which no torch below 2.7 can
+# drive, so the linux wheels resolve from the cu128 index declared in [tool.uv.sources].
+# The detector and pose trainers are vendored into their own virtual environments by the
+# pod setup script; this environment never imports them.
+cuda = [
+  "numpy>=2 ; sys_platform == 'linux'",
+  "torch>=2.7 ; sys_platform == 'linux'",
+  "torchvision>=0.22 ; sys_platform == 'linux'",
+  "pycocotools>=2.0.7 ; sys_platform == 'linux'",
+]
+
+# ---- (d) numpy 2 analysis fork: dataset curation and tracking metrics -------
+# The curation tool, the tracking-metric implementation and the shippable tracker all need
+# numpy 2, so they sit on this side of the wall together. trackeval is kept here for as long
+# as src/vividly/eval/mot.py and tests/test_mot.py depend on it. The curation tool has no
+# importer in the tree: it is declared here for interactive dataset curation only, and nothing
+# in src/, scripts/ or tests/ depends on it.
+curate = [
+  "fiftyone>=1.20,<2",
+  "trackeval==1.3.0",   # the maintained MIT distribution on the index, never the git source
+  "trackers==2.6.0",    # Apache 2.0, the shippable tracker
+  "opencv-python==4.14.0.94",
+  "opencv-contrib-python==4.14.0.94",
+  "opencv-python-headless==4.14.0.94",
+  # ---- the OSNet export toolchain on macOS ---------------------------------
+  # torchreid is MIT and reaches this project in two places only: the curate fork on macOS,
+  # below, and a by-hand install from the pinned clone on the Linux training pod, which
+  # TRAINING.md records. The development fork stays free of torch and does embedding inference
+  # through the ONNX graph this trio produces, with scripts/reid/export_osnet_onnx.py. The
+  # darwin markers are deliberate: an unmarked torch here would resolve through the CUDA index
+  # on linux, into an environment that expects the plain build.
+  "torchreid ; sys_platform == 'darwin'",
+  "torch>=2.4 ; sys_platform == 'darwin'",           # PyPI macOS arm64 = CPU build
+  "torchvision>=0.19 ; sys_platform == 'darwin'",    # torchreid.models imports it
+  "onnx>=1.16 ; sys_platform == 'darwin'",           # graph check on the exported file
+]
+
+# ---- (c) the AGPL quarantine ------------------------------------------------
+# boxmot 22.0.0 requires numpy >= 2.2.0 and torch >= 2.2.1, so it cannot coexist with the
+# cuda extra at any version. The conflicts table below turns that into a hard resolver error
+# rather than a silent downgrade, which is the mechanical form of the AGPL isolation rule.
+eval-agpl = [
+  "ultralytics>=8.3 ; sys_platform == 'linux'",
+  "boxmot>=22.0.0 ; sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.6",
+  "pytest>=8",
+  "pytest-cov>=5",
+  "pre-commit>=3.7",
+  "import-linter>=2.0",
+  "ensemble-boxes==1.0.9",  # reference WBF behind src/vividly/eval/wbf.py (MIT, arXiv:1910.13302)
+]
+# (a) The macOS arm64 harness and ONNX inference. Every entry carries a darwin marker so it
+# never collides with the linux-marked cuda and eval-agpl forks. The versions are the ones in
+# the verified environment the harness measurements were taken in.
+mac = [
+  "numpy==2.4.6 ; sys_platform == 'darwin'",
+  "rtmlib==0.0.16 ; sys_platform == 'darwin'",
+  "onnxruntime==1.28.0 ; sys_platform == 'darwin'",
+  "opencv-python==4.14.0.94 ; sys_platform == 'darwin'",
+  "opencv-contrib-python==4.14.0.94 ; sys_platform == 'darwin'",
+  "opencv-python-headless==4.14.0.94 ; sys_platform == 'darwin'",
+  "trackers==2.6.0 ; sys_platform == 'darwin'",
+  "pycocotools==2.0.11 ; sys_platform == 'darwin'",
+  "xtcocotools==1.14.3 ; sys_platform == 'darwin'",
+  "trackeval==1.3.0 ; sys_platform == 'darwin'",
+]
+
+# (a2) The same harness on Linux, which is the deployment platform. This group mirrors the
+# mac group exactly, the same distributions at the same versions, so a number measured on one
+# platform means the same thing on the other. Without it there is no environment that can run
+# an exported ONNX graph on the platform the product ships to, and the platform-marked tests
+# skip on a Linux runner. It cannot share an interpreter with the cuda fork; the conflicts
+# table below makes that a lock-time error rather than a runtime surprise.
+linux-harness = [
+  "numpy==2.4.6 ; sys_platform == 'linux'",
+  "rtmlib==0.0.16 ; sys_platform == 'linux'",
+  "onnxruntime==1.28.0 ; sys_platform == 'linux'",
+  "opencv-python==4.14.0.94 ; sys_platform == 'linux'",
+  "opencv-contrib-python==4.14.0.94 ; sys_platform == 'linux'",
+  "opencv-python-headless==4.14.0.94 ; sys_platform == 'linux'",
+  "trackers==2.6.0 ; sys_platform == 'linux'",
+  "pycocotools==2.0.11 ; sys_platform == 'linux'",
+  "xtcocotools==1.14.3 ; sys_platform == 'linux'",
+  "trackeval==1.3.0 ; sys_platform == 'linux'",
+]
+
+[tool.uv]
+required-version = ">=0.11"
+default-groups = ["dev", "mac"]
+conflicts = [
+  [{ extra = "cuda" }, { extra = "eval-agpl" }],
+  [{ extra = "cuda" }, { extra = "curate" }],
+  # The isolation rule again, with cuda out of the picture: on Linux, asking for eval-agpl
+  # and curate together would otherwise co-install the AGPL tracker alongside the shippable
+  # one in a single interpreter. The AGPL fork keeps its own virtual environment.
+  [{ extra = "eval-agpl" }, { extra = "curate" }],
+  # The training fork and the ONNX measurement fork stay separate so they cannot blend into
+  # one interpreter. Merging them would be a decision to take deliberately, not a default.
+  [{ extra = "cuda" }, { group = "linux-harness" }],
+  [{ extra = "eval-agpl" }, { group = "linux-harness" }],
+  [{ extra = "curate" }, { group = "linux-harness" }],
+]
+# A lock over the two platforms the project targets. Without this the resolver would solve
+# for platforms the product never ships to.
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+# The published cp311 wheels for xtcocotools were compiled against numpy 1.x headers and
+# raise a dtype size error at import time under numpy 2. Forcing a local source build makes
+# the extension match the numpy in its own environment.
+no-binary-package = ["xtcocotools"]
+
+[tool.uv.extra-build-dependencies]
+# xtcocotools declares neither numpy nor cython in build-system.requires, so the forced
+# source build above fails without these.
+xtcocotools = ["numpy", "cython", "setuptools"]
+# The torchreid distribution ships no build-system table at all, and its setup script defeats
+# build isolation in two separate ways. Module scope imports numpy and cython, for the include
+# path and for a cython extension. Reading the version string executes the package initialiser,
+# whose first statement imports the entire library, so the whole runtime stack is pulled in at
+# build time. That is why the runtime stack appears below as a build dependency. Every entry is
+# load-bearing: drop one and the lock fails with a missing-module error out of the setup script.
+torchreid = [
+  "numpy", "cython", "setuptools", "wheel",
+  "torch", "torchvision",
+  "scipy", "h5py", "pillow", "opencv-python", "matplotlib", "imageio",
+  "gdown", "chardet", "future", "six", "yacs", "tabulate", "tb-nightly",
+]
+
+# explicit = true is mandatory: the PyTorch indexes mirror much of the public index, so
+# without it unrelated packages would be sourced from the mirror. cu128 is the first CUDA line
+# carrying Blackwell (sm_120) kernels, which is the floor the training pods need.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+# The linux marker is mandatory. An unmarked index source would make the macOS fork
+# unsatisfiable, because the cu128 index publishes no macOS wheels.
+torch       = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+# The distribution published on the public index under this name is a stale 0.2.5 source
+# archive from 2022 and is not the canonical project. The canonical MIT distribution is the
+# repository below, which docs/LICENCE_ALLOWLIST.md admits as the only sanctioned source of
+# OSNet weights and code. The source is unmarked so that the same pin is used by the curate
+# fork and by the by-hand install on the training pod. The revision is a full 40-character
+# commit identifier and never a branch, because a branch would re-resolve.
+torchreid = { git = "https://github.com/KaiyangZhou/deep-person-reid.git", rev = "f8cd150fdf77e8d9e1ed143b7f308c2c609ded50" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vividly"]
+
+# ---- tooling config (does not participate in dependency resolution) ----------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.format]
+# ruff 0.16 and later reformats Python code blocks inside markdown. The snippets in the
+# documents are exact excerpts of scripts in this repository and must not be reflowed.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF"]
+ignore = ["E501"]  # ruff-format owns line length
+
+[tool.ruff.lint.isort]
+# Stated explicitly so that continuous integration and a local run can never disagree on
+# import grouping, which a difference in first-party inference once made them do.
+known-first-party = ["vividly"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "gpu: requires a CUDA device and the `cuda` extra",
+  "slow: takes more than ~5s",
+  "network: downloads something",
+]

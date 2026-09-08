@@ -1,0 +1,45 @@
+# Interim seizure verifier v2pose, pre-declared recipe (2026-09-04, committed
+# before any training or evaluation ran; anti-overfitting protocol).
+#
+#   uv run python scripts/events/train_event_verifier.py --config configs/events/train_convulsion_v2pose.yaml
+#
+# One change from train_convulsion_v2_real.yaml (the model of record, exam window AUC
+# 0.69841 for ONNX 07c399be): the source extraction is wu_sahzu_tracks_v2pose, the same
+# chained prototype detector (55c2c242), same tracker/tracks operating point, but pose
+# comes from the joints lane model of record (ONNX 6ba96285) instead of the body7 zoo
+# asset. Window geometry (12s/3s overlap + scene_channels), architecture, calibration,
+# hyperparameters, patient split (train pat01/02/05/13, registry-enforced), seed: all
+# identical, so the delta is attributable to the pose eyes alone.
+# Exams: one look each on eval_wusahzu_testsplit_v2pose.yaml (pat03/07/14/04/09/11,
+# bar 0.69841) and eval_wusahzu_unallocated_v2pose.yaml (pat06/08/10/12, the
+# permanently exam-side patients recorded in POLICY.md, rule 4). Both looks were taken:
+# this recipe produced convulsion_v2pose, ONNX 614b92fa, which scored 0.53728 on the
+# testsplit and 0.69921 on the unallocated exam and was not promoted
+# (final_models/seizure/README.md).
+schema_version: 1
+task: convulsion
+window:
+  window_s: 12.0
+  stride_s: 3.0
+  n_steps: 64
+  policy: overlap
+  overlap_min_s: 4.0
+  min_present: 0.35
+  scene_channels: true
+sources:
+  - dir: outputs/events/wu_sahzu_tracks_v2pose
+    locations: [pat01, pat02, pat05, pat13]
+holdout_fraction: 0.2
+model:
+  hidden: 64
+  blocks: 3
+  dropout: 0.15
+train:
+  epochs: 60
+  batch: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: auto
+  seed: 20260826
+  device: cpu
+out_dir: outputs/verifier/convulsion_v2pose

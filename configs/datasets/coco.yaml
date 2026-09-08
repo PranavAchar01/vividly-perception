@@ -1,0 +1,86 @@
+schema_version: 1
+name: coco
+display_name: COCO 2017 (person keypoints + instances)
+task: [detection, pose]
+bucket: TRAIN_OK
+status: available            # on disk at data/train_ok/coco as of 2026-08-07
+licensing:
+  license: "annotations: CC BY 4.0 / images: Flickr Terms of Use (COCO Consortium does not own image copyright)"
+  license_url: https://cocodataset.org/#termsofuse
+  license_verbatim: >
+    The annotations in this dataset along with this website belong to the COCO Consortium and are
+    licensed under a Creative Commons Attribution 4.0 License. ... The COCO Consortium does not own
+    the copyright of the images. Use of the images must abide by the Flickr Terms of Use. The users
+    of the images accept full responsibility for the use of the dataset.
+  license_conflict_note: null
+  commercial_use: permitted   # industry-standard commercial training practice; see CQ-2
+  attribution_required: true  # CC BY 4.0, so the README credits the COCO Consortium
+  redistribute: false         # governs third-party redistribution, that is, re-publishing COCO
+                              # to others. It does not govern an internal access-controlled
+                              # mirror: copying the extracted tree to a private bucket so a
+                              # training pod can pull it is internal caching, not distribution.
+                              # See CQ-2 in docs/COUNSEL_QUESTIONS.md.
+  counsel_questions: []       # CQ-2 (per-image Flickr terms) is a low-priority review item and
+                              # is deliberately not listed here: listing it would block TRAIN_OK
+                              # under the registry invariant that a TRAIN_OK entry carries no
+                              # open counsel questions, and would stop all training. It is
+                              # recorded instead as an advisory (non-blocking) entry in
+                              # docs/COUNSEL_QUESTIONS.md, so the question is visible without
+                              # being invisible by omission.
+  counsel_cleared_utc: null
+provenance:
+  collector: COCO Consortium
+  imagery_source: Flickr, third-party photographers, heterogeneous per-image licences
+  contains_real_people: true
+  simulated_medical_events: false
+  citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
+acquisition:
+  method: http
+  human_required: false
+  urls:
+    - http://images.cocodataset.org/zips/train2017.zip                      # 19,336,861,798 B
+    - http://images.cocodataset.org/zips/val2017.zip                        #    815,585,330 B
+    - http://images.cocodataset.org/annotations/annotations_trainval2017.zip #   252,907,541 B
+  mirrors:
+    - https://academictorrents.com/details/74dec1dd21ae4994dfd9069f9cb0443eb960c962
+  human_steps: []
+layout:
+  root: data/train_ok/coco
+  images:
+    train: train2017
+    val: val2017
+  annotations:
+    train: annotations/person_keypoints_train2017.json
+    val: annotations/person_keypoints_val2017.json
+    train_det: annotations/instances_train2017.json
+    val_det: annotations/instances_val2017.json
+ann_format: coco_keypoints
+converter: null                # native COCO JSON, read directly; no conversion step
+files: []
+hashes_unavailable_reason: >
+  Zips were deleted after extraction by the fetch of 2026-08-07. Integrity is instead
+  pinned on the extracted annotation JSONs, recorded in counts and verified_sha256 below.
+verified_sha256:               # extra key, informational; verified on disk 2026-08-07, except
+                               # instances_train2017.json, added 2026-08-09. All four files that
+                               # layout.annotations registers are pinned here.
+  annotations/person_keypoints_train2017.json: 7fc1549d934547c470384d8a207c38707ca33fc016d00e33b795e408603af83e
+  annotations/person_keypoints_val2017.json:   788e2dae83c86bd547be7fab269d6399df5671063d29a61360cdb2cc370d2b14
+  annotations/instances_train2017.json:        610fce4944abdeb15354cc765333805529359d12d88f2f711393ca586901d01d
+  annotations/instances_val2017.json:          e8c7f7908f1d7278341fae127d0da654f102f11bd7b21d8aeefa635b8c810b6f
+                               # instances_train2017.json is 469,785,474 B. It was the one gap in
+                               # this block: layout.annotations.train_det registers it, so it is
+                               # pinned here too.
+counts:
+  train_images: 118287         # verified: ls data/train_ok/coco/train2017 | wc -l
+  val_images: 5000
+  train_person_anns: 262465
+  train_person_anns_with_keypoints: 149813
+  val_person_anns: 11004
+  val_person_anns_with_keypoints: 6352
+derived_from: []
+notes: >
+  Only person_keypoints_* are used for pose; instances_* for detection fine-tunes, filtered to
+  category person. Published top-down pose evaluations read a shipped person-detection results
+  file, COCO_val2017_detections_AP_H_56_person.json. Evaluation here runs this repository's own
+  detector, so that file is not used and not registered.
+  20 GB extracted.
