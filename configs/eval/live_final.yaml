@@ -1,0 +1,34 @@
+# Live appliance configuration: the two lanes of record from final_models/, on CPU.
+#
+#   uv run python scripts/live_stream.py --config configs/eval/live_final.yaml ...
+#
+# The detector is the eyes lane (RT-DETRv4-S person v2) through the rtdetr_onnx backend,
+# the pose is the joints lane (RTMPose-m person v2) through rtmlib. Digests are the ones on
+# the lane sidecars; each backend refuses a graph whose bytes do not match.
+schema_version: 1
+
+detector:
+  backend: rtdetr_onnx
+  onnx: final_models/eyes/model.onnx
+  input_size: [640, 640]
+  device: cpu
+  # 0.4 is the demo platform's viewer default on the eyes page: precision 0.9317 at recall
+  # 0.9306, 1.28 false boxes per image against 2.62 at 0.3. This project trades toward
+  # precision. The live script filters again at --score, kept equal in the launcher.
+  score_thr: 0.4
+  name: rtdetrv4-s-person-v2-onnx
+  sha256: 4026204967aa01a7680f7ce0c6169463d654a519f8093383a10537321f56fd49
+
+pose:
+  backend: rtmlib
+  onnx: final_models/joints/model.onnx
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-person-v2-onnx
+  sha256: 6ba9628506a8899d3a3e940dcc8af5d30342921f09d2605afa505b57453d3527
+
+inputs:
+  image: tests/fixtures/sample.jpg
+  clip: tests/fixtures/sample_clip.mp4
+
+out_dir: outputs/live
