@@ -35,7 +35,9 @@ from pathlib import Path
 import pytest
 
 from vividly.rules import (
+    ALL_RULE_IDS,
     DEFAULT_RULE_IDS,
+    RULE_KEYS,
     AbstainingVerifier,
     BookRule,
     ConvulsiveMotionRule,
@@ -70,6 +72,7 @@ from vividly.tracks import TrackBook, TrackConfig, TrackObservation, TrackState,
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RULES_YAML = REPO_ROOT / "configs" / "pipeline" / "rules.yaml"
+RULES_DIR = REPO_ROOT / "configs" / "pipeline" / "rules"
 RULES_PKG = REPO_ROOT / "src" / "vividly" / "rules"
 
 # Track sizing used by every scene: a 5 minute baseline, a 30 second reap window, and a
@@ -338,11 +341,43 @@ def test_rules_yaml_matches_the_rule_config_defaults():
     assert load_rule_config(RULES_YAML) == RuleConfig()
 
 
+def test_rules_yaml_is_an_index_over_one_file_per_head():
+    """The index includes exactly one file per group of RULE_KEYS and nothing else."""
+    text = RULES_YAML.read_text(encoding="utf-8")
+    included = [line.split("- ", 1)[1].strip() for line in text.splitlines() if "- rules/" in line]
+    assert included == [f"rules/{group}.yaml" for group in RULE_KEYS]
+    assert set(p.name for p in RULES_DIR.glob("*.yaml")) == {f"{g}.yaml" for g in RULE_KEYS}
+    assert _yaml_rule_keys(RULES_YAML) == ["include"]
+
+
+def test_rule_keys_partition_every_threshold_exactly_once():
+    field_names = list(RuleConfig.threshold_names())
+    listed = [key for keys in RULE_KEYS.values() for key in keys]
+    assert sorted(listed) == sorted(field_names)
+    assert len(listed) == len(set(listed))
+    assert set(RULE_KEYS) == {"engine", *ALL_RULE_IDS}
+
+
 def test_rules_yaml_covers_every_threshold_exactly_once():
-    field_names = {f.name for f in dataclasses.fields(RuleConfig)}
-    keys = _yaml_rule_keys()
+    field_names = {f.name for f in dataclasses.fields(RuleConfig)} - {"enabled", "sources"}
+    keys = [key for group in RULE_KEYS for key in _yaml_rule_keys(RULES_DIR / f"{group}.yaml")]
     assert sorted(keys) == sorted(field_names)
     assert len(keys) == len(set(keys))
+
+
+@pytest.mark.parametrize("group", sorted(RULE_KEYS))
+def test_each_rule_file_holds_only_its_own_keys(group: str):
+    assert _yaml_rule_keys(RULES_DIR / f"{group}.yaml") == list(RULE_KEYS[group])
+
+
+def test_load_rule_config_records_the_file_behind_every_threshold():
+    cfg = load_rule_config(RULES_YAML)
+    for group, keys in RULE_KEYS.items():
+        expected = str((RULES_DIR / f"{group}.yaml").resolve())
+        assert {cfg.sources[key] for key in keys} == {expected}
+    for rule_id in ALL_RULE_IDS:
+        assert cfg.rule_file(rule_id) == str((RULES_DIR / f"{rule_id}.yaml").resolve())
+        assert set(cfg.rule_thresholds(rule_id)) == set(RULE_KEYS[rule_id])
 
 
 def test_every_rules_yaml_threshold_is_commented_provisional():
@@ -352,33 +387,102 @@ def test_every_rules_yaml_threshold_is_commented_provisional():
     This is the one claim in this layer that has consequences outside the repository: an
     uncommented threshold is a threshold someone eventually quotes as a product number.
     """
-    lines = RULES_YAML.read_text(encoding="utf-8").splitlines()
     checked = 0
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not line.startswith("  ") or stripped.startswith("#") or ":" not in stripped:
-            continue
-        block: list[str] = []
-        j = i - 1
-        while j >= 0 and lines[j].strip().startswith("#"):
-            block.append(lines[j])
-            j -= 1
-        key = stripped.split(":", 1)[0]
-        joined = "\n".join(block)
-        assert "PROVISIONAL" in joined, f"{key} has no PROVISIONAL comment"
-        assert "acute-event" in joined, f"{key} does not name the acute-event rule set"
-        assert "CALIBRATION.md" in joined, f"{key} does not point at docs/CALIBRATION.md"
-        checked += 1
-    assert checked == len(dataclasses.fields(RuleConfig))
+    for group in RULE_KEYS:
+        lines = (RULES_DIR / f"{group}.yaml").read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not line.startswith("  ") or stripped.startswith("#") or ":" not in stripped:
+                continue
+            block: list[str] = []
+            j = i - 1
+            while j >= 0 and lines[j].strip().startswith("#"):
+                block.append(lines[j])
+                j -= 1
+            key = stripped.split(":", 1)[0]
+            joined = "\n".join(block)
+            assert "PROVISIONAL" in joined, f"{key} has no PROVISIONAL comment"
+            assert "acute-event" in joined, f"{key} does not name the acute-event rule set"
+            assert "CALIBRATION.md" in joined, f"{key} does not point at docs/CALIBRATION.md"
+            checked += 1
+    assert checked == len(RuleConfig.threshold_names())
 
 
-def _yaml_rule_keys() -> list[str]:
+def _yaml_rule_keys(path: Path = RULES_YAML) -> list[str]:
     keys: list[str] = []
-    for line in RULES_YAML.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
-        if line.startswith("  ") and not stripped.startswith("#") and ":" in stripped:
+        if (
+            line.startswith("  ")
+            and not line.startswith("   ")
+            and not stripped.startswith("#")
+            and ":" in stripped
+        ):
             keys.append(stripped.split(":", 1)[0])
     return keys
+
+
+# ----------------------------------------------------------- include and enabled
+def test_include_refuses_a_threshold_set_by_two_files(tmp_path: Path):
+    (tmp_path / "a.yaml").write_text("down_still_min_s: 45.0\n", encoding="utf-8")
+    (tmp_path / "b.yaml").write_text("down_still_min_s: 50.0\n", encoding="utf-8")
+    (tmp_path / "index.yaml").write_text("rules:\n  include: [a.yaml, b.yaml]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="more than one included file"):
+        load_rule_config(tmp_path / "index.yaml")
+
+
+def test_include_merges_and_the_including_file_may_override(tmp_path: Path):
+    (tmp_path / "a.yaml").write_text("down_still_min_s: 45.0\n", encoding="utf-8")
+    (tmp_path / "index.yaml").write_text(
+        "rules:\n  include: [a.yaml]\n  refire_after_s: 60.0\n  down_still_min_s: 40.0\n",
+        encoding="utf-8",
+    )
+    cfg = load_rule_config(tmp_path / "index.yaml")
+    assert cfg.down_still_min_s == 40.0 and cfg.refire_after_s == 60.0
+    assert cfg.sources["down_still_min_s"] == str(tmp_path / "index.yaml")
+    assert cfg.sources["refire_after_s"] == str(tmp_path / "index.yaml")
+    assert cfg.rule_file("fall_then_still_v0") is None  # the rest came from nowhere
+
+
+def test_include_refuses_a_cycle(tmp_path: Path):
+    (tmp_path / "a.yaml").write_text("rules:\n  include: [a.yaml]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="cycle"):
+        load_rule_config(tmp_path / "a.yaml")
+
+
+def test_enabled_filters_the_rules_that_are_built():
+    assert [r.rule_id for r in build_default_rules(RuleConfig())] == list(DEFAULT_RULE_IDS)
+    only_fall = RuleConfig(enabled=("fall_then_still_v0",))
+    assert [r.rule_id for r in build_default_rules(only_fall)] == ["fall_then_still_v0"]
+    none_built = RuleConfig(enabled=("egress_without_discharge_v0",))
+    assert build_default_rules(none_built) == []
+    assert only_fall == RuleConfig()  # the allowlist is not a threshold
+
+
+def test_enabled_refuses_an_unknown_rule_id():
+    with pytest.raises(ValueError, match="unknown rule ids"):
+        RuleConfig.from_mapping({"enabled": ["fall_then_still_v0", "no_such_rule_v9"]})
+    with pytest.raises(ValueError, match="list of rule ids"):
+        RuleConfig.from_mapping({"enabled": "fall_then_still_v0"})
+    with pytest.raises(ValueError, match="repeats"):
+        RuleConfig.from_mapping({"enabled": ["fall_then_still_v0", "fall_then_still_v0"]})
+
+
+def test_convulsion_rule_is_imported_lazily():
+    """A wheel without vividly/rules/convulsion.py imports the package and builds the floor
+    rule; the convulsion class is fetched from the package only when it is asked for."""
+    import importlib
+    import sys
+
+    import vividly.rules as rules_pkg
+
+    assert "ConvulsiveMotionRule" not in vars(rules_pkg)
+    assert rules_pkg.ConvulsiveMotionRule.rule_id == "seizure_candidate_v0"
+    engine_src = (RULES_PKG / "engine.py").read_text(encoding="utf-8")
+    assert (
+        "from vividly.rules.convulsion import" not in engine_src.split("def build_default_rules")[0]
+    )
+    importlib.reload(sys.modules["vividly.rules.engine"])
 
 
 def test_rule_config_rejects_unknown_keys():

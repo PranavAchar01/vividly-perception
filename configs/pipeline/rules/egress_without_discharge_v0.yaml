@@ -1,0 +1,32 @@
+# egress_without_discharge_v0 thresholds (vividly.rules.egress): a person who left through a
+# configured exit zone, stayed away, was not tagged discharged and was not confirmed to have
+# come back. One of the per-rule files under configs/pipeline/rules/; only this head reads
+# these keys. The zones themselves are per-site geometry and live in the pipeline config's
+# `egress:` block, never here.
+#
+# Every value in this file is PROVISIONAL (the acute-event rule set, POLICY.md;
+# docs/CALIBRATION.md). Do not quote a number from here as a product number and do not read
+# a firing count from any run as a false-alarm rate. Loaded by vividly.rules.load_rule_config;
+# pinned equal to the RuleConfig defaults by tests/test_rules.py.
+
+rules:
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How long the person must stay away after leaving through an exit zone before the
+  # candidate fires. This is the leaves-for-longer-than-N-minutes condition from the product
+  # description, and N is a placeholder until shadow-mode data exists. It must exceed the
+  # track layer's reap_after_s by a wide margin, because a departure is only noticed at reap
+  # time.
+  egress_absent_min_s: 600.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How long the person must have been present before their exit counts as a patient
+  # leaving. A walk-through is not an egress.
+  egress_min_presence_s: 120.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How far back along the track's own history, measured from its last sighting, an
+  # exit-zone sample may lie for the departure to count as passing through the exit. It
+  # absorbs a frame or two of tracker noise at the door; a person lost in the middle of the
+  # room is an occlusion, not an exit, and never alerts.
+  egress_exit_window_s: 5.0

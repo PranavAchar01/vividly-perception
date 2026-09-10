@@ -1,0 +1,46 @@
+# seizure_candidate_v0 thresholds (vividly.rules.convulsion): sustained convulsive motion.
+# One of the per-rule files under configs/pipeline/rules/; only this rule reads these keys.
+# The Clip Library profile (configs/pipeline/clip_library.yaml) never includes this file and
+# never lists this rule: scripts/guards/check_clip_library_config.py refuses any spool-writing
+# profile that names it (design D-C and P2, 2026-09-09).
+#
+# Every value in this file is PROVISIONAL (the acute-event rule set, POLICY.md;
+# docs/CALIBRATION.md). The verifier confirm thresholds do not live here: they are per-head
+# `verify.heads.<rule_id>.confirm_threshold` in a pipeline config. Do not quote a number from
+# here as a product number and do not read a firing count from any run as a false-alarm rate.
+# Loaded by vividly.rules.load_rule_config; pinned equal to the RuleConfig defaults by
+# tests/test_rules.py.
+
+rules:
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The window convulsive motion is measured over.
+  convulse_window_s: 12.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The oscillation must span at least this many seconds inside the window. Tonic-clonic
+  # convulsions run tens of seconds; a two-second shudder, a dropped bag, a chair scrape
+  # must not alert.
+  convulse_min_s: 8.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Fraction of consecutive step pairs whose directions reverse (negative dot product).
+  # Rhythmic convulsion reverses nearly every step; walking and seated fidgeting almost
+  # never do. This is the signature the rule binds on, because amplitude alone is a person
+  # shifting in a chair.
+  convulse_reversal_frac: 0.6
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Mean per-step centre displacement, in pixels, below which the motion is jitter rather
+  # than convulsion and the rule abstains. What keeps sub-pixel tracker noise (which
+  # reverses constantly, at no amplitude) silent.
+  convulse_amp_min_px: 3.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Minimum position samples inside the window.
+  convulse_min_samples: 20
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The newest position sample may not be older than this. Convulsion is a claim about right
+  # now, and stale evidence does not support it.
+  convulse_stale_s: 2.0

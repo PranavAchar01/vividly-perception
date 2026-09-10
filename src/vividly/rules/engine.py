@@ -52,9 +52,8 @@ from __future__ import annotations
 
 import math
 
-from vividly.rules.base import Rule, RuleConfig, RuleFiring
+from vividly.rules.base import ALL_RULE_IDS, Rule, RuleConfig, RuleFiring
 from vividly.rules.collapse import FallThenStillRule
-from vividly.rules.convulsion import ConvulsiveMotionRule
 from vividly.rules.egress import EgressMonitor
 from vividly.rules.verify import VERIFY_POLICIES, EventVerifier, annotate_firing
 from vividly.tracks import TrackBook, TrackState
@@ -66,12 +65,23 @@ DEFAULT_RULE_IDS: tuple[str, ...] = (
 
 
 def build_default_rules(cfg: RuleConfig | None = None) -> list[Rule]:
-    """The two acute-event rules, in DEFAULT_RULE_IDS order, sharing one config."""
+    """The acute-event rules, in DEFAULT_RULE_IDS order, sharing one config.
+
+    `cfg.enabled` (None means every rule) is the allowlist: a rule id absent from it is
+    never constructed, and its module is never imported. The convulsion rule is imported
+    here rather than at module level for exactly that reason: a wheel built for a Clip
+    Library site ships without `vividly/rules/convulsion.py`, and this function still runs.
+    """
     config = RuleConfig() if cfg is None else cfg
-    return [
-        FallThenStillRule(config),
-        ConvulsiveMotionRule(config),
-    ]
+    wanted = set(ALL_RULE_IDS) if config.enabled is None else set(config.enabled)
+    rules: list[Rule] = []
+    if "fall_then_still_v0" in wanted:
+        rules.append(FallThenStillRule(config))
+    if "seizure_candidate_v0" in wanted:
+        from vividly.rules.convulsion import ConvulsiveMotionRule
+
+        rules.append(ConvulsiveMotionRule(config))
+    return rules
 
 
 class RuleEngine:

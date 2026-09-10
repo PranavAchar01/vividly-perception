@@ -1,0 +1,73 @@
+# fall_then_still_v0 thresholds (vividly.rules.collapse): the upright-to-floor cascade
+# confirmed by a prolonged down-and-still period. One of the per-rule files under
+# configs/pipeline/rules/; only this rule reads these keys, so a Clip's basis can hash this
+# file alone (design P2, 2026-09-09).
+#
+# Every value in this file is PROVISIONAL (the acute-event rule set, POLICY.md;
+# docs/CALIBRATION.md). Pixel thresholds are pixels on the source frame, so they are
+# resolution and mount dependent and do not travel between sites. Do not quote a number from
+# here as a product number and do not read a firing count from any run as a false-alarm rate.
+# Loaded by vividly.rules.load_rule_config; pinned equal to the RuleConfig defaults by
+# tests/test_rules.py.
+
+rules:
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How far back the evidence scan may look, and therefore the oldest a fall may be and
+  # still produce an alert. Must cover fall_max_s + down_still_min_s + down_stale_s
+  # (RuleConfig raises otherwise). Note that TrackConfig ring sizing must cover this window
+  # or the evidence is silently truncated.
+  collapse_search_s: 120.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Torso angle (degrees from vertical) at or below which a person counts as upright before
+  # the fall. The cascade requires an upright sample inside the search window: a person who
+  # entered the frame already on the ground, or slid down over minutes, produces no fall
+  # transition and the rule abstains, which puts precision first.
+  fall_upright_max_deg: 30.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Torso angle at or above which a person counts as down. The down-phase span is the
+  # contiguous run of samples at or above this angle. It has to clear RTMPose jitter on
+  # degraded perspective and top-view footage, and that jitter has never been measured on
+  # this camera geometry, at this compression, with these weights.
+  fall_down_min_deg: 60.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The upright-to-down transition must complete within this many seconds. This is the gate
+  # that separates a fall from a slow slump: a transition longer than this is not an acute
+  # event and must not alert here.
+  fall_max_s: 3.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The box centre must move down the image by at least this many pixels across the
+  # transition. Guards against pose-noise angle flips with no actual body displacement.
+  # Pixels on the source frame: resolution and mount dependent, the clearest example in this
+  # file of a per-site number wearing the costume of a constant.
+  fall_drop_min_px: 40.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # How long the person must stay both down and still after the fall before the cascade
+  # fires. This is the confirmation stage, a fall alone never alerts, and it is the
+  # acute-event false-positive stance expressed in one number: detection latency is spent to
+  # buy precision.
+  down_still_min_s: 30.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Mean per-step centre displacement, in pixels, at or below which the down phase counts as
+  # still. Above it the rule abstains: a person moving on the ground is not down-and-still
+  # (rhythmic movement on the ground is seizure_candidate_v0's job).
+  down_move_max_px: 6.0
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # Minimum posture samples inside the down span before it counts. At 15 fps a 30 s span
+  # holds 450 of them, so this only bites when pose confidence has been dropping out for
+  # most of the span, which is exactly when the evidence is too thin to act on.
+  down_min_samples: 15
+
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md).
+  # The newest posture sample may not be older than this, and the down span may not bridge a
+  # posture blackout longer than this. Down-and-still is a claim about right now, and stale
+  # evidence does not support it. A crowd gathering around the person breaks the evidence
+  # chain and the rule goes silent rather than guessing through the occlusion.
+  down_stale_s: 5.0

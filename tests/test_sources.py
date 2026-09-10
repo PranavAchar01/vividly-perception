@@ -107,10 +107,11 @@ def test_source_info_fields_match_contract() -> None:
 
 def test_frame_fields_match_contract() -> None:
     names = [f.name for f in dataclasses.fields(Frame)]
-    assert names == ["index", "t_source", "image"]
+    assert names == ["index", "t_source", "image", "wall_utc"]
     frame = Frame(index=3, t_source=0.2, image=None)  # type: ignore[arg-type]
     frame.index = 4  # Frame is mutable by contract; this must not raise
     assert frame.index == 4
+    assert frame.wall_utc is None  # file sources carry no wall clock (design P4)
 
 
 def test_frame_source_protocol_exposes_the_four_lifecycle_methods() -> None:

@@ -30,18 +30,22 @@ false-alarm rate.
 
 from __future__ import annotations
 
+from typing import Any
+
 from vividly.rules.base import (
+    ALL_RULE_IDS,
+    RULE_KEYS,
     SECONDS_PER_MINUTE,
     BookRule,
     Rule,
     RuleConfig,
     RuleFiring,
     load_rule_config,
+    merge_rule_mapping,
     window_positions,
     window_postures,
 )
 from vividly.rules.collapse import FallThenStillRule
-from vividly.rules.convulsion import ConvulsiveMotionRule
 from vividly.rules.egress import (
     EGRESS_RULE_ID,
     EGRESS_RULE_VERSION,
@@ -60,10 +64,24 @@ from vividly.rules.verify import (
     annotate_firing,
 )
 
+
+def __getattr__(name: str) -> Any:
+    """`ConvulsiveMotionRule` is imported on first use, not at package import: the wheel a
+    Clip Library site runs ships without `vividly/rules/convulsion.py` (design P2) and this
+    package must still import there. Every other name is a plain import above."""
+    if name == "ConvulsiveMotionRule":
+        from vividly.rules.convulsion import ConvulsiveMotionRule
+
+        return ConvulsiveMotionRule
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
+    "ALL_RULE_IDS",
     "DEFAULT_RULE_IDS",
     "EGRESS_RULE_ID",
     "EGRESS_RULE_VERSION",
+    "RULE_KEYS",
     "SECONDS_PER_MINUTE",
     "VERIFIER_VERDICTS",
     "VERIFY_POLICIES",
@@ -84,6 +102,7 @@ __all__ = [
     "annotate_firing",
     "build_default_rules",
     "load_rule_config",
+    "merge_rule_mapping",
     "window_positions",
     "window_postures",
 ]

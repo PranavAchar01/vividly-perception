@@ -88,6 +88,19 @@ script is a false-alarm rate, no proposal count is a false-merge rate, and no nu
 belongs in a deck. See configs/pipeline/rules.yaml, configs/pipeline/reid.yaml,
 configs/pipeline/replay_demo.yaml and docs/CALIBRATION.md.
 
+Clip Library profile (design 2026-09-09, P2 to P4). A profile that sets `clips.spool_dir`
+turns on the `ClipEmitter` (src/vividly/clips_emitter.py), which writes one spool record
+per allowlisted firing after `_persist` commits, and it must also: state `rules.enabled`
+(only the two Clip triggers are accepted there), carry no `verify:` block, keep
+`reassoc.persist` false, write nothing under the repository's outputs/ tree, and keep its
+event store in memory (`store.path: ":memory:"`) or under its own output directory. Any of
+those missing is a config error here, before a frame is read, and
+scripts/guards/check_clip_library_config.py refuses the same things at commit time. The live
+camera enters through `source: {rtsp_env: <ENV VAR>, camera_id: ..., masks: [...]}`, which
+`LiveRTSPSource` serves with a wall-clock stamp on every frame; the profile family
+(`run_name` starting with `clip_library` or `device_track`) is the only one that may use it,
+and the URL itself is read from the environment and never written anywhere.
+
 Exit codes:
     0  ran
     2  usage error (argparse)
@@ -100,6 +113,8 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -114,10 +129,19 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from vividly.clips_emitter import (  # noqa: E402
+    CLIP_TRIGGER_RULES,
+    BasisFacts,
+    ClipEmitter,
+    ClipsConfig,
+    SourceClock,
+)
 from vividly.dashboard.app import STAGES, PipelineState, create_app, encode_jpeg_b64  # noqa: E402
 from vividly.events import DuplicateAlertError, EventStore  # noqa: E402
-from vividly.models.checkpoints import is_lfs_pointer  # noqa: E402
+from vividly.models.checkpoints import is_lfs_pointer, sha256_of  # noqa: E402
 from vividly.rules import (  # noqa: E402
+    ALL_RULE_IDS,
+    EGRESS_RULE_VERSION,
     EgressMonitor,
     EgressZones,
     RuleConfig,
@@ -125,6 +149,7 @@ from vividly.rules import (  # noqa: E402
     RuleFiring,
     build_default_rules,
     load_rule_config,
+    merge_rule_mapping,
 )
 from vividly.schemas.events import AlertRecord, make_alert_id, utc_now_iso  # noqa: E402
 from vividly.sources import SyntheticDetectionSource  # noqa: E402
@@ -136,6 +161,10 @@ EXIT_CONFIG = 3
 #: Everything a run writes lands under <output.dir>/<run_name>/.
 ALERT_DB_NAME = "alerts.sqlite"
 LATENCY_LOG_NAME = "latency.jsonl"
+#: The event store path that means "no file" (vividly.events.store.MEMORY_PATH).
+MEMORY_STORE = ":memory:"
+#: The only profile families that may open a live camera (design P4).
+LIVE_PROFILE_FAMILIES = ("clip_library", "device_track")
 
 #: How many pending re-association proposals the exit summary counts. Display sizing, not
 #: a threshold: a session-scoped gallery cannot produce more questions than one visit's
@@ -311,12 +340,17 @@ def resolve(path: str | Path, repo_root: Path) -> Path:
     return candidate if candidate.is_absolute() else repo_root / candidate
 
 
-def build_rule_config(cfg: Mapping[str, Any], repo_root: Path) -> RuleConfig:
+def build_rule_config(
+    cfg: Mapping[str, Any], repo_root: Path, config_path: Path | None = None
+) -> RuleConfig:
     """Thresholds come from an inline `rules:` block or from a `rules_config:` file.
 
     Never both: two sources of truth for a threshold is precisely the failure mode
     docs/CALIBRATION.md exists to prevent, and a silent merge would hide which number
-    actually ran.
+    actually ran. An inline block may carry `include: [...]` (the per-rule files under
+    configs/pipeline/rules/, resolved against the profile's own directory, or absolute), and
+    `enabled: [...]`, the rule allowlist; a key stated beside the includes overrides the
+    included value and is recorded as this profile's own.
     """
     inline = cfg.get("rules")
     pointer = cfg.get("rules_config")
@@ -330,8 +364,83 @@ def build_rule_config(cfg: Mapping[str, Any], repo_root: Path) -> RuleConfig:
     if inline is not None:
         if not isinstance(inline, Mapping):
             raise ConfigError(f"`rules` must be a mapping, got {type(inline).__name__}")
-        return RuleConfig.from_mapping(inline)
+        base_dir = (
+            config_path.parent if config_path is not None else repo_root / "configs" / "pipeline"
+        )
+        origin = str(config_path) if config_path is not None else "<inline rules block>"
+        try:
+            merged, sources = merge_rule_mapping(inline, base_dir=base_dir, origin=origin)
+        except ValueError as exc:
+            raise ConfigError(f"`rules`: {exc}") from exc
+        return RuleConfig.from_mapping({**merged, "sources": sources})
     return RuleConfig()
+
+
+def build_clips_config(cfg: Mapping[str, Any], *, mode: str) -> ClipsConfig | None:
+    """The `clips:` block, or None. Its presence makes the Clip Library refusals mandatory
+    (design P2 and P3): the allowlist must be stated and may name only the two triggers, no
+    verifier may run, re-association proposals may not persist, and nothing may be written
+    under outputs/."""
+    block = cfg.get("clips")
+    if block is None:
+        return None
+    if not isinstance(block, Mapping):
+        raise ConfigError(f"`clips` must be a mapping, got {type(block).__name__}")
+    rules = cfg.get("rules")
+    enabled = rules.get("enabled") if isinstance(rules, Mapping) else None
+    if not enabled:
+        raise ConfigError(
+            "a profile that sets `clips.spool_dir` must state `rules.enabled`; the rule "
+            "allowlist is mandatory for a Clip spool, never implied by a file name"
+        )
+    if isinstance(enabled, str) or not isinstance(enabled, list | tuple):
+        raise ConfigError("`rules.enabled` must be a list of rule ids")
+    outside = sorted(set(enabled) - CLIP_TRIGGER_RULES)
+    if outside:
+        raise ConfigError(
+            f"`rules.enabled` names {outside}, which may not run in a profile that writes a "
+            f"Clip spool; the allowed heads are {sorted(CLIP_TRIGGER_RULES)}"
+        )
+    if "verify" in cfg:
+        raise ConfigError("a profile that writes a Clip spool may not carry a `verify` block")
+    reassoc = cfg.get("reassoc") or {}
+    if not isinstance(reassoc, Mapping):
+        raise ConfigError("`reassoc` must be a mapping")
+    if bool(reassoc.get("persist", False)):
+        raise ConfigError("`reassoc.persist` must be false in a profile that writes a Clip spool")
+    default_kind = (
+        "synthetic_jsonl"
+        if mode == "synthetic"
+        else ("live" if "rtsp_env" in (cfg.get("source") or {}) else "replay_file")
+    )
+    try:
+        return ClipsConfig.from_mapping(block, default_source_kind=default_kind)
+    except (ValueError, KeyError) as exc:
+        raise ConfigError(f"`clips`: {exc}") from exc
+
+
+def _expand(value: Any) -> str:
+    """Environment variables and `~` in a configured path. An unset variable is a config
+    error rather than a literal directory called `${VIVIDLY_CLIP_DATA}`."""
+    expanded = os.path.expandvars(str(value))
+    if "${" in expanded or expanded.startswith("$"):
+        raise ConfigError(f"path {value!r} names an environment variable that is not set")
+    return str(Path(expanded).expanduser())
+
+
+def _git_sha(repo_root: Path) -> str | None:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    sha = out.stdout.strip()
+    return sha if out.returncode == 0 and len(sha) == 40 else None
 
 
 def _canonical(value: Any) -> Any:
@@ -419,6 +528,31 @@ def build_egress_zones(cfg: Mapping[str, Any]) -> EgressZones:
         raise ConfigError(f"`egress`: {exc}") from exc
 
 
+def build_masks(source_cfg: Any) -> tuple[tuple[int, int, int, int], ...]:
+    """`source.masks: [{x, y, w, h}]`, the per-camera exclusion rectangles blacked out
+    before detection (design 2.3). Absent means none."""
+    if not isinstance(source_cfg, Mapping):
+        return ()
+    raw = source_cfg.get("masks") or []
+    if not isinstance(raw, list | tuple):
+        raise ConfigError("`source.masks` must be a list of {x, y, w, h}")
+    masks: list[tuple[int, int, int, int]] = []
+    for item in raw:
+        if not isinstance(item, Mapping) or set(item) != {"x", "y", "w", "h"}:
+            raise ConfigError("each `source.masks` entry needs exactly x, y, w, h")
+        x, y, w, h = (int(item[k]) for k in ("x", "y", "w", "h"))
+        if x < 0 or y < 0 or w <= 0 or h <= 0:
+            raise ConfigError("`source.masks` rectangles need x, y >= 0 and w, h > 0")
+        masks.append((x, y, w, h))
+    return tuple(masks)
+
+
+def _parse_utc(text: str) -> float:
+    from datetime import datetime
+
+    return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+
+
 def build_reid_config(cfg: Mapping[str, Any], repo_root: Path) -> Any | None:
     """Parse the optional `reid:` block, or None when this config has no re-ID at all.
 
@@ -478,12 +612,14 @@ class Pipeline:
         self,
         cfg: Mapping[str, Any],
         repo_root: Path = REPO_ROOT,
+        config_path: Path | None = None,
     ) -> None:
         # Validation first, side effects afterwards. A config error must not leave an open
         # SQLite file and a half-written latency log behind, and it must surface before a
         # dashboard is served rather than on the first frame with a browser attached.
         self.cfg = dict(cfg)
         self.repo_root = repo_root
+        self.config_path = None if config_path is None else Path(config_path).resolve()
         self.run_name = str(self.cfg.get("run_name", "pipeline"))
 
         detections_from = self.cfg.get("detections_from")
@@ -491,9 +627,16 @@ class Pipeline:
         self.mode = "synthetic" if self.zero_footage else "replay"
 
         self.track_cfg = build_track_config(self.cfg)
-        self.rule_cfg = build_rule_config(self.cfg, repo_root)
+        self.rule_cfg = build_rule_config(self.cfg, repo_root, self.config_path)
         self.reid_cfg = build_reid_config(self.cfg, repo_root)
         self.egress_zones = build_egress_zones(self.cfg)
+        self.clips_cfg = build_clips_config(self.cfg, mode=self.mode)
+        if self.clips_cfg is not None and self.reid_cfg is not None and self.reid_cfg.enabled:
+            raise ConfigError(
+                "re-association is off in a profile that writes a Clip spool: its proposals "
+                "would persist appearance-based re-association to disk (`reassoc.persist`)"
+            )
+        self._masks = build_masks(self.cfg.get("source"))
 
         if self.zero_footage:
             self.source_path = resolve(str(detections_from), repo_root)
@@ -559,11 +702,35 @@ class Pipeline:
         self._pose: Any = None
         self._tracker: Any = None
 
-        self.out_dir = resolve(output.get("dir", "outputs/pipeline"), repo_root) / self.run_name
+        self.out_dir = (
+            resolve(_expand(output.get("dir", "outputs/pipeline")), repo_root) / self.run_name
+        )
+        store_cfg = self.cfg.get("store") or {}
+        if not isinstance(store_cfg, Mapping):
+            raise ConfigError(f"`store` must be a mapping, got {type(store_cfg).__name__}")
+        store_path = _expand(store_cfg.get("path", self.out_dir / ALERT_DB_NAME))
+        self.store_in_memory = store_path == MEMORY_STORE
+        if self.clips_cfg is not None:
+            forbidden = (repo_root / "outputs").resolve()
+            if self.out_dir.resolve().is_relative_to(forbidden):
+                raise ConfigError(
+                    "a profile that writes a Clip spool may not write under outputs/; set "
+                    "`output.dir` under the Clip Library data directory"
+                )
+            if not self.store_in_memory:
+                inside = Path(store_path).resolve().is_relative_to(self.out_dir.resolve())
+                if not inside:
+                    raise ConfigError(
+                        "`store.path` must be `:memory:` or lie under `output.dir` in a profile "
+                        "that writes a Clip spool"
+                    )
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.store = EventStore(self.out_dir / ALERT_DB_NAME)
+        self.store = EventStore(MEMORY_STORE if self.store_in_memory else store_path)
         self.latency_path = self.out_dir / LATENCY_LOG_NAME
         self._latency_fh = self.latency_path.open("w", encoding="utf-8")
+        # Wall clock for source time: the epoch is the run's own start for files and
+        # fixtures, and is re-based from every live frame's stamp (design P4).
+        self.clock = SourceClock(time.time())
 
         # None whenever re-ID is off, which is the default and every config that shipped
         # before it existed. Built after the store because a proposal is a row in it, and
@@ -571,6 +738,7 @@ class Pipeline:
         self.reid = self._build_reid()
         self._reid_stats: Any = None
         self._reid_pending = 0
+        self.emitter = self._build_emitter()
 
         self.state = PipelineState(
             book=self.book,
@@ -626,17 +794,30 @@ class Pipeline:
         `*.jpg`) selects the frame files; `rate` paces playback in either shape.
         """
         usage = (
-            "a footage run needs `source: {path: <clip>}` or `source: {images: <dir>, "
-            "fps: <Hz>}`, or `detections_from: <jsonl>` for the zero-footage flow"
+            "a footage run needs `source: {path: <clip>}`, `source: {images: <dir>, "
+            "fps: <Hz>}` or `source: {rtsp_env: <ENV VAR>, camera_id: <id>}`, or "
+            "`detections_from: <jsonl>` for the zero-footage flow"
         )
         if not isinstance(source_cfg, Mapping):
             raise ConfigError(usage)
-        has_path, has_images = "path" in source_cfg, "images" in source_cfg
-        if has_path == has_images:
+        shapes = [k for k in ("path", "images", "rtsp_env") if k in source_cfg]
+        if len(shapes) != 1:
             raise ConfigError(
-                usage if not has_path else "`source` takes `path` OR `images`, not both"
+                usage
+                if not shapes
+                else "`source` takes exactly one of `path`, `images`, `rtsp_env`"
             )
-        if has_path:
+        if "rtsp_env" in source_cfg:
+            env_name = str(source_cfg["rtsp_env"])
+            if not env_name or not env_name.isidentifier():
+                raise ConfigError("`source.rtsp_env` must name an environment variable")
+            if not source_cfg.get("camera_id"):
+                raise ConfigError("`source.rtsp_env` needs `source.camera_id`")
+            # The label is the variable's NAME. The URL carries credentials and is read
+            # from the environment when the source opens; it is never part of the run id,
+            # the summary or any file this script writes.
+            return Path(f"rtsp-env:{env_name}")
+        if "path" in source_cfg:
             return resolve(str(source_cfg["path"]), repo_root)
         if "fps" not in source_cfg:
             raise ConfigError(
@@ -659,6 +840,22 @@ class Pipeline:
         source_cfg = dict(self.cfg["source"])
         rate = source_cfg.get("rate")
         rate = None if rate is None else float(rate)
+        if "rtsp_env" in source_cfg:
+            family = self.run_name.split("_")[0] if "_" in self.run_name else self.run_name
+            if not any(self.run_name.startswith(f) for f in LIVE_PROFILE_FAMILIES):
+                raise ConfigError(
+                    f"only the {LIVE_PROFILE_FAMILIES} profile families may open a live camera; "
+                    f"run_name {self.run_name!r} (family {family!r}) may not"
+                )
+            url = os.environ.get(str(source_cfg["rtsp_env"]))
+            if not url:
+                raise ConfigError(
+                    f"environment variable {source_cfg['rtsp_env']} is not set; it must hold "
+                    "the camera URL (never written into a config)"
+                )
+            from vividly.sources.rtsp import LiveRTSPSource
+
+            return LiveRTSPSource(url)
         if "images" in source_cfg:
             from vividly.sources.image_sequence import ImageSequenceSource
 
@@ -671,6 +868,92 @@ class Pipeline:
         from vividly.sources.replay import ReplaySource
 
         return ReplaySource(self.source_path, rate)
+
+    # -- the Clip emitter --------------------------------------------------
+    def _build_emitter(self) -> ClipEmitter | None:
+        """The spool writer, or None. Built after the store and the book, and after re-ID
+        (which is off in any profile that has one), so the reap watcher is free."""
+        if self.clips_cfg is None:
+            return None
+        try:
+            emitter = ClipEmitter(
+                self.clips_cfg,
+                book=self.book,
+                run_id=self.run_id,
+                basis=self._basis_facts(),
+                clock=self.clock,
+                latency_line=lambda: self.n_frames,
+            )
+        except OSError as exc:
+            self._latency_fh.close()
+            self.store.close()
+            raise ConfigError(f"`clips`: {exc}") from exc
+        if self.reid is not None:
+            reid_watch = self.reid.on_track_reaped
+
+            def fan_out(track: Any) -> None:
+                reid_watch(track)
+                emitter.on_reap(track)
+
+            self.book.set_reap_watcher(fan_out)
+        else:
+            self.book.set_reap_watcher(emitter.on_reap)
+        return emitter
+
+    def _basis_facts(self) -> BasisFacts:
+        """What every spool record says about the software that produced it."""
+        versions = {rule.rule_id: rule.rule_version for rule in self.engine.rules}
+        versions["egress_without_discharge_v0"] = EGRESS_RULE_VERSION
+        rule_files: dict[str, str] = {}
+        for rule_id in ALL_RULE_IDS:
+            path = self.rule_cfg.rule_file(rule_id)
+            if path and Path(path).is_file():
+                rule_files[rule_id] = sha256_of(Path(path))
+        if self.config_path is not None and self.config_path.is_file():
+            config_sha = sha256_of(self.config_path)
+        else:
+            config_sha = hashlib.sha256(
+                json.dumps(_canonical(self.cfg), sort_keys=True).encode("utf-8")
+            ).hexdigest()
+        model_ids: list[str] = []
+        onnx_hashes: list[str] = []
+        for key in ("detector", "pose"):
+            block = self.cfg.get(key)
+            if not isinstance(block, Mapping):
+                continue
+            name = block.get("name") or block.get("backend")
+            if name:
+                model_ids.append(str(name))
+            onnx = block.get("onnx")
+            if isinstance(onnx, str):
+                candidate = Path(onnx) if Path(onnx).is_absolute() else self.repo_root / onnx
+                if candidate.is_file() and not is_lfs_pointer(candidate):
+                    onnx_hashes.append(sha256_of(candidate))
+        tracker = self.cfg.get("tracker")
+        tracker_backend = (
+            str(tracker.get("backend"))
+            if isinstance(tracker, Mapping) and tracker.get("backend")
+            else None
+        )
+        tracker_version = None
+        if tracker_backend:
+            from importlib.metadata import PackageNotFoundError, version
+
+            try:
+                tracker_version = version("trackers")
+            except PackageNotFoundError:
+                tracker_version = None
+        return BasisFacts(
+            rule_versions=versions,
+            rule_thresholds={rid: self.rule_cfg.rule_thresholds(rid) for rid in ALL_RULE_IDS},
+            rule_file_sha256=rule_files,
+            pipeline_config_sha256=config_sha,
+            model_ids=tuple(model_ids),
+            onnx_sha256=tuple(onnx_hashes),
+            tracker_backend=tracker_backend,
+            tracker_version=tracker_version,
+            software_git_sha=_git_sha(self.repo_root),
+        )
 
     # -- lifecycle ---------------------------------------------------------
     def _build_reid(self) -> Any:
@@ -737,6 +1020,10 @@ class Pipeline:
         if self._closed:
             return
         self._closed = True
+        if self.emitter is not None:
+            # Open floor windows close at the last tick: a run that ends inside a post-roll
+            # still leaves a record of what it saw.
+            self.emitter.flush()
         self._shutdown_reid()
         self._write_summary()
         self._latency_fh.close()
@@ -878,6 +1165,8 @@ class Pipeline:
         firings = self.engine.tick(self.book, t)
         for firing in firings:
             self._persist(firing)
+        if self.emitter is not None:
+            self.emitter.tick(t)
         return firings
 
     def _persist(self, firing: RuleFiring) -> None:
@@ -912,6 +1201,10 @@ class Pipeline:
         except DuplicateAlertError:
             return
         self.n_alerts += 1
+        if self.emitter is not None:
+            # After the commit, never before: a spool record must describe a firing the
+            # store holds (design P3).
+            self.emitter.on_alert(record)
 
     # -- publication -------------------------------------------------------
     def _render(self, image: Any) -> str | None:
@@ -974,6 +1267,8 @@ class Pipeline:
         if self.egress is not None:
             # Same rule: present only when the egress head ran.
             row["egress"] = self.egress.stats()
+        if self.emitter is not None:
+            row["clips"] = self.emitter.stats()
         self._latency_fh.write(json.dumps(row, sort_keys=True) + "\n")
 
     # -- the loop ----------------------------------------------------------
@@ -1048,6 +1343,12 @@ class Pipeline:
             frame = self._pull(stream)
             if frame is _EXHAUSTED:
                 return
+            if frame.wall_utc is not None:
+                self.clock.rebase(t_source=frame.t_source, wall_s=_parse_utc(frame.wall_utc))
+            for x, y, w, h in self._masks:
+                # The mask stage (design 2.3): a hard-excluded area never reaches the
+                # detector, so nothing downstream can ever have seen it.
+                frame.image[y : y + h, x : x + w] = 0
             detections = self.timer.run("detect", 1, self._detector.detect_one, frame.image)
             tracked = self.timer.run(
                 "track", max(len(detections), 1), self._tracker.update, detections, frame.index
@@ -1142,8 +1443,10 @@ class Pipeline:
             f"source   : {self.source_path}\n"
             f"frames   : {self.n_frames}\n"
             f"tracks   : {len(self.book.tracks())} live at exit\n"
-            f"alerts   : {self.n_alerts} newly written to {self.out_dir / ALERT_DB_NAME}\n"
+            f"alerts   : {self.n_alerts} newly written to "
+            f"{'the in-memory store' if self.store_in_memory else self.out_dir / ALERT_DB_NAME}\n"
             f"{self._egress_summary()}"
+            f"{self._clips_summary()}"
             f"latency  : {self.latency_path}\n"
             f"{self._reid_summary()}"
             "\n"
@@ -1164,6 +1467,17 @@ class Pipeline:
             f"discharged {s['n_suppressed_discharged'] + s['n_discharged_after_departure']}, "
             f"outside a zone {s['n_left_outside_zone']}, short {s['n_short_presence']}, "
             f"returned {s['n_returned']}); zones {s['zones']}\n"
+        )
+
+    def _clips_summary(self) -> str:
+        """One line when the Clip emitter ran; nothing when the profile has none."""
+        if self.emitter is None:
+            return ""
+        st = self.emitter.stats()
+        return (
+            f"clips    : {st['n_written']} spool record(s) and {st['n_updates']} update(s) "
+            f"written to {st['spool_dir']}; {st['n_dropped']} non-allowlisted firing(s) "
+            f"produced no file\n"
         )
 
     def _reid_summary(self) -> str:
@@ -1265,7 +1579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         cfg = load_config(args.config)
-        pipeline = Pipeline(cfg, REPO_ROOT)
+        pipeline = Pipeline(cfg, REPO_ROOT, config_path=args.config)
     except ValueError as exc:
         # ConfigError is a ValueError, and so is every other way this block can fail: the
         # thresholds validate themselves in RuleConfig.__post_init__ and TrackConfig, and a

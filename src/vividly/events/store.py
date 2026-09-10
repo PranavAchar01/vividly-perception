@@ -248,6 +248,10 @@ def _check_finite(name: str, value: float) -> float:
 
 
 # ---------------------------------------------------------------------- store
+#: The one path that means "no file": an in-memory store (design section 2.1).
+MEMORY_PATH = ":memory:"
+
+
 class EventStore:
     """Append-and-annotate store for alerts and re-association proposals.
 
@@ -257,13 +261,20 @@ class EventStore:
     """
 
     def __init__(self, path: str | Path) -> None:
+        # ":memory:" is a store that never touches disk (the Clip Library profile, design
+        # section 2.1): the spool record carries the committed row, so nothing is lost, and
+        # no file of firings the library rejected is ever written.
+        self._memory = str(path) == MEMORY_PATH
         self._path = Path(path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._memory:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._closed = False
         self._version_on_open = -1  # replaced by _configure; -1 means "never got that far"
         try:
-            self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
+            self._conn = sqlite3.connect(
+                MEMORY_PATH if self._memory else str(self._path), check_same_thread=False
+            )
         except sqlite3.Error as exc:
             self._closed = True
             raise EventStoreError(f"cannot open event store {self._path}: {exc}") from exc

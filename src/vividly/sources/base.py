@@ -58,11 +58,16 @@ class Frame:
     rules layer cannot tell them apart.
 
     image is HxWx3 uint8 BGR, matching the model layer's numpy in / numpy out rule.
+
+    wall_utc is the read wall time, RFC 3339 UTC with milliseconds, stamped by a live
+    source (LiveRTSPSource, design P4) and None for every file source: a replay has no
+    wall clock of its own, and inventing one would make a replayed rule window look live.
     """
 
     index: int
     t_source: float
     image: np.ndarray
+    wall_utc: str | None = None
 
 
 @runtime_checkable

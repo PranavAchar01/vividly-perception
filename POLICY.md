@@ -248,6 +248,20 @@ The denylist covers LUPerson-derived lineages, which are never shippable and are
 material only, and the checkpoints derived from Market-1501, MSMT and Duke. Appearance weights
 come only from the canonical MIT-licensed distribution, ImageNet-pretrained variant preferred.
 
+### Owner decision, 2026-09-09: the Clip Library on hospital premises
+
+Event-only Clip storage on hospital premises under the `clip_library` pipeline profile is in
+scope; continuous recording remains out of scope; nothing from the founder's rig enters any
+corpus; the rig subject is the founder alone unless a written consent decision for a named
+adult non-patient participant is recorded here first. The profile
+(`configs/pipeline/clip_library.yaml`) may run exactly two rule heads, `fall_then_still_v0`
+and `egress_without_discharge_v0`, keeps its own event store in memory, persists no
+re-association, runs no verifier head, and writes one spool record per firing for the
+separate `vividly-clip` repository to cut, encrypt and retain; the third head and the
+periodicity analyzer stay on the device track. `scripts/guards/check_clip_library_config.py`
+and `tests/test_clip_emitter.py` enforce this; the design and its counsel questions are
+`~/vividly-camera/clip/CLIP-LIBRARY-DESIGN.md`.
+
 ## 3. Dataset acquisition and licensing
 
 **Acquisition channel, standing across all lanes.** Datasets are acquired only by self-serve

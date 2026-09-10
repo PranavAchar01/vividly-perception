@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -249,7 +249,23 @@ class RuleConfig:
     # of frames of tracker noise at the door must not turn an exit into a mid-room loss.
     egress_exit_window_s: float = 5.0
 
+    # -- not thresholds ------------------------------------------------------------
+    # The rule allowlist (P2 of the Clip Library design, 2026-09-09): None means every rule
+    # head this package ships, which is what every profile before the allowlist existed
+    # ran. A profile that writes a Clip spool must state the list; run_pipeline enforces
+    # that. Excluded from equality so a config with a list still equals the same thresholds.
+    enabled: tuple[str, ...] | None = field(default=None, compare=False)
+    # Which file each threshold came from (`load_rule_config` fills it), so a spool record
+    # can name the fired rule's own file and hash it. Never a threshold; never compared.
+    sources: Mapping[str, str] = field(default_factory=dict, compare=False, hash=False)
+
     def __post_init__(self) -> None:
+        if self.enabled is not None:
+            unknown = sorted(set(self.enabled) - set(ALL_RULE_IDS))
+            if unknown:
+                raise ValueError(
+                    f"rules.enabled names unknown rule ids {unknown}; known ids are {ALL_RULE_IDS}"
+                )
         positive = (
             "refire_after_s",
             "collapse_search_s",
@@ -314,20 +330,92 @@ class RuleConfig:
         exactly the failure this project cannot afford: it would look like a calibrated
         run and be an uncalibrated one.
         """
-        known = {f.name: f.type for f in fields(cls)}
-        unknown = sorted(set(data) - set(known))
+        known = cls.threshold_names()
+        unknown = sorted(set(data) - set(known) - _META_FIELDS)
         if unknown:
             raise ValueError(f"unknown RuleConfig keys: {unknown}; known keys are {sorted(known)}")
         kwargs: dict[str, Any] = {}
         for name, value in data.items():
-            if name in _INT_FIELDS:
+            if name == "enabled":
+                kwargs[name] = _enabled_tuple(value)
+            elif name == "sources":
+                kwargs[name] = dict(value)
+            elif name in _INT_FIELDS:
                 kwargs[name] = int(value)
             else:
                 kwargs[name] = float(value)
         return cls(**kwargs)
 
+    @classmethod
+    def threshold_names(cls) -> tuple[str, ...]:
+        """Every threshold field, in declaration order; never the meta fields."""
+        return tuple(f.name for f in fields(cls) if f.name not in _META_FIELDS)
+
+    def rule_thresholds(self, rule_id: str) -> dict[str, float | int]:
+        """The thresholds one rule head reads, and nothing from any other head."""
+        return {name: getattr(self, name) for name in RULE_KEYS[rule_id]}
+
+    def rule_file(self, rule_id: str) -> str | None:
+        """The one file every threshold of `rule_id` was loaded from, or None when the
+        thresholds came from more than one file or from no file at all."""
+        files = {self.sources.get(name) for name in RULE_KEYS[rule_id]}
+        if len(files) == 1 and None not in files:
+            return next(iter(files))
+        return None
+
 
 _INT_FIELDS = frozenset({"down_min_samples", "convulse_min_samples"})
+_META_FIELDS = frozenset({"enabled", "sources"})
+
+#: Every rule head this package ships, in the order the engine evaluates them; the egress
+#: head is an engine attachment rather than a Rule but has thresholds of its own.
+ALL_RULE_IDS: tuple[str, ...] = (
+    "fall_then_still_v0",
+    "seizure_candidate_v0",
+    "egress_without_discharge_v0",
+)
+
+#: Which threshold belongs to which head (the engine's own keys under "engine"). One file
+#: per group under configs/pipeline/rules/; tests/test_rules.py pins that this partition
+#: covers every threshold exactly once and that each file holds only its own keys.
+RULE_KEYS: dict[str, tuple[str, ...]] = {
+    "engine": ("refire_after_s", "camera_refire_after_s", "eval_every_s"),
+    "fall_then_still_v0": (
+        "collapse_search_s",
+        "fall_upright_max_deg",
+        "fall_down_min_deg",
+        "fall_max_s",
+        "fall_drop_min_px",
+        "down_still_min_s",
+        "down_move_max_px",
+        "down_min_samples",
+        "down_stale_s",
+    ),
+    "seizure_candidate_v0": (
+        "convulse_window_s",
+        "convulse_min_s",
+        "convulse_reversal_frac",
+        "convulse_amp_min_px",
+        "convulse_min_samples",
+        "convulse_stale_s",
+    ),
+    "egress_without_discharge_v0": (
+        "egress_absent_min_s",
+        "egress_min_presence_s",
+        "egress_exit_window_s",
+    ),
+}
+
+
+def _enabled_tuple(value: Any) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"rules.enabled must be a list of rule ids, got {value!r}")
+    out = tuple(str(v) for v in value)
+    if len(set(out)) != len(out):
+        raise ValueError(f"rules.enabled repeats a rule id: {list(out)}")
+    return out
 
 
 def load_rule_config(path: str | Path) -> RuleConfig:
@@ -336,8 +424,20 @@ def load_rule_config(path: str | Path) -> RuleConfig:
     Accepts either a file whose top level is the threshold mapping, or one that nests it
     under a `rules:` key, so a pipeline config can carry its thresholds inline or point at
     the shared file. Every value still goes through RuleConfig validation.
+
+    A file may carry `include: [path, ...]` (relative to the file, or absolute): the
+    included files are loaded first, and a key that two included files both set is
+    refused, so a threshold has exactly one home. Keys stated beside the `include` list
+    override the included value and are recorded as coming from this file, which is how a
+    demo profile shrinks a threshold and can still say where every number came from.
+    `sources` on the returned config names the file behind every key.
     """
     config_path = Path(path)
+    merged, sources = _load_rule_mapping(config_path, seen=())
+    return RuleConfig.from_mapping({**merged, "sources": sources})
+
+
+def _rule_block(config_path: Path) -> Mapping[str, Any]:
     with config_path.open("r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
     if not isinstance(data, Mapping):
@@ -345,7 +445,50 @@ def load_rule_config(path: str | Path) -> RuleConfig:
     block = data.get("rules", data)
     if not isinstance(block, Mapping):
         raise ValueError(f"{config_path}: `rules` must be a mapping, got {type(block).__name__}")
-    return RuleConfig.from_mapping(block)
+    return block
+
+
+def merge_rule_mapping(
+    block: Mapping[str, Any], *, base_dir: Path, origin: str, seen: tuple[Path, ...] = ()
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Resolve `include` inside one rules mapping. Returns (thresholds, key -> file)."""
+    merged: dict[str, Any] = {}
+    sources: dict[str, str] = {}
+    includes = block.get("include", ())
+    if isinstance(includes, str) or not isinstance(includes, list | tuple):
+        raise ValueError(f"{origin}: `include` must be a list of paths")
+    for item in includes:
+        target = Path(str(item)).expanduser()
+        if not target.is_absolute():
+            target = base_dir / target
+        target = target.resolve()
+        if target in seen:
+            raise ValueError(f"{origin}: `include` cycle through {target}")
+        part, part_sources = _load_rule_mapping(target, seen=(*seen, target))
+        clash = sorted(set(part) & set(merged))
+        if clash:
+            raise ValueError(
+                f"{origin}: thresholds {clash} are set by more than one included file "
+                f"({sources[clash[0]]} and {part_sources[clash[0]]}); a threshold has one home"
+            )
+        merged.update(part)
+        sources.update(part_sources)
+    for key, value in block.items():
+        if key == "include":
+            continue
+        merged[key] = value
+        if key not in _META_FIELDS:
+            sources[key] = origin
+    return merged, sources
+
+
+def _load_rule_mapping(
+    config_path: Path, *, seen: tuple[Path, ...]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    block = _rule_block(config_path)
+    return merge_rule_mapping(
+        block, base_dir=config_path.parent, origin=str(config_path), seen=seen or (config_path,)
+    )
 
 
 def window_positions(

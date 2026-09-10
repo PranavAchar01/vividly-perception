@@ -9,7 +9,10 @@ shows, which is why this class takes a fully-formed URL and never assembles one 
 Standing rule: Vividly records nothing of its own. A live source consumes a hospital's
 own camera, or a bring-up rig's, over the network, frame by frame, and writes no file.
 The URL carries credentials, so it is read from the runner's --url argument or from the
-environment and never committed.
+environment and never committed. The one downstream consumer that keeps anything is the
+Clip Library profile (POLICY.md owner decision, 2026-09-09): event Clips only, on premises,
+cut by a separate process from its own memory ring; nothing from a bring-up rig enters any
+corpus and the rig subject is the founder alone.
 
 Import discipline: cv2 is darwin-marked in this repo's dev fork, so it is imported inside
 functions, never at module level. Linux CI imports this file with no cv2 installed.
@@ -20,6 +23,15 @@ Two honest differences from ReplaySource, both intrinsic to a live stream:
   * No seeking. seek() raises, because a live camera cannot be scrubbed. t_source is still
     index/fps, so the rules layer sees the same clip-time contract, using fps_fallback when
     the stream does not report a usable frame rate (RTSP commonly reports 0).
+
+Wall clock (Clip Library design P4, 2026-09-09). Every Frame carries `wall_utc`: the
+stream position (CAP_PROP_POS_MSEC) added to the epoch taken when the capture opened,
+cross-checked against the process clock on every read and re-based when the two disagree
+by more than `rebase_tolerance_s` (a stall, a reconnect, a camera whose position counter
+jumped). `source_epoch_utc` is the epoch currently in force. The camera reports no usable
+frame rate and reconnect gaps of minutes have been observed, so an offset computed from
+frame counts would drift without bound; the wall stamp is what a spool record's window is
+measured from, and the Clip Library cuts its ring by that clock alone.
 """
 
 from __future__ import annotations
@@ -33,6 +45,23 @@ from vividly.sources.base import Frame, FrameSource, SourceInfo
 
 DEFAULT_FPS_FALLBACK = 15.0
 _DEFAULT_FFMPEG_OPTS = "rtsp_transport;tcp|stimeout;5000000"
+#: cv2.CAP_PROP_* values, stated here so `open` and `frames` never import cv2 (a test
+#: drives them with a fake capture on a runner that has none).
+_CAP_PROP_POS_MSEC = 0
+_CAP_PROP_FRAME_WIDTH = 3
+_CAP_PROP_FRAME_HEIGHT = 4
+_CAP_PROP_FPS = 5
+DEFAULT_REBASE_TOLERANCE_S = 1.0
+
+
+def _utc_iso(epoch_s: float) -> str:
+    from datetime import UTC, datetime
+
+    return (
+        datetime.fromtimestamp(epoch_s, tz=UTC)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 class LiveRTSPSource(FrameSource):
@@ -53,6 +82,8 @@ class LiveRTSPSource(FrameSource):
         reconnect_backoff_s: float = 1.0,
         ffmpeg_opts: str = _DEFAULT_FFMPEG_OPTS,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.time,
+        rebase_tolerance_s: float = DEFAULT_REBASE_TOLERANCE_S,
     ) -> None:
         if not url or not isinstance(url, str):
             raise ValueError("LiveRTSPSource needs a non-empty stream URL")
@@ -64,9 +95,14 @@ class LiveRTSPSource(FrameSource):
         self.reconnect_backoff_s = reconnect_backoff_s
         self.ffmpeg_opts = ffmpeg_opts
         self._sleep = sleep
+        self._clock = clock
+        self.rebase_tolerance_s = rebase_tolerance_s
         self._cap: Any | None = None
         self._info: SourceInfo | None = None
         self._next_index = 0
+        self._epoch_s: float | None = None
+        self.source_epoch_utc: str | None = None
+        self.n_rebases = 0
 
     def __repr__(self) -> str:  # pragma: no cover - never leaks the credentialed URL
         scheme = self.url.split("://", 1)[0] if "://" in self.url else "?"
@@ -93,19 +129,44 @@ class LiveRTSPSource(FrameSource):
         import math
 
         cap = self._connect()
-        import cv2
-
-        raw_fps = float(cap.get(cv2.CAP_PROP_FPS))
+        raw_fps = float(cap.get(_CAP_PROP_FPS))
         fps = raw_fps if (not math.isnan(raw_fps) and raw_fps > 0.0) else self.fps_fallback
         self._cap = cap
         self._info = SourceInfo(
             fps=fps,
-            width=round(float(cap.get(cv2.CAP_PROP_FRAME_WIDTH))),
-            height=round(float(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))),
+            width=round(float(cap.get(_CAP_PROP_FRAME_WIDTH))),
+            height=round(float(cap.get(_CAP_PROP_FRAME_HEIGHT))),
             n_frames=None,  # live: unbounded
         )
         self._next_index = 0
+        self._rebase(cap)
         return self._info
+
+    # -- wall clock ---------------------------------------------------------
+    @staticmethod
+    def _position_s(cap: Any) -> float:
+        try:
+            pos = float(cap.get(_CAP_PROP_POS_MSEC))
+        except (TypeError, ValueError):
+            return 0.0
+        return pos / 1000.0 if pos == pos and pos > 0.0 else 0.0
+
+    def _rebase(self, cap: Any) -> None:
+        """Epoch = now - stream position, taken at open and on every reconnect or stall."""
+        self._epoch_s = self._clock() - self._position_s(cap)
+        self.source_epoch_utc = _utc_iso(self._epoch_s)
+        self.n_rebases += 1
+
+    def _wall_now(self, cap: Any) -> float:
+        now = self._clock()
+        if self._epoch_s is None:
+            self._rebase(cap)
+        assert self._epoch_s is not None
+        wall = self._epoch_s + self._position_s(cap)
+        if abs(wall - now) > self.rebase_tolerance_s:
+            self._rebase(cap)
+            wall = now
+        return wall
 
     def close(self) -> None:
         if self._cap is not None:
@@ -133,8 +194,14 @@ class LiveRTSPSource(FrameSource):
                 if self._cap is not None:
                     self._cap.release()
                 self._cap = self._connect()
+                self._rebase(self._cap)
                 continue
             reconnects = 0
             index = self._next_index
             self._next_index += 1
-            yield Frame(index=index, t_source=index / fps, image=image)
+            yield Frame(
+                index=index,
+                t_source=index / fps,
+                image=image,
+                wall_utc=_utc_iso(self._wall_now(self._cap)),
+            )

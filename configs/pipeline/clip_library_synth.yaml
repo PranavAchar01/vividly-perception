@@ -1,0 +1,71 @@
+# Vividly Clip Library profile over the committed synthetic scene: the same refusals and the
+# same spool as configs/pipeline/clip_library.yaml, with the perception stack lifted out.
+#
+#   VIVIDLY_CLIP_DATA=/tmp/clip-data \
+#     uv run python scripts/run_pipeline.py --config configs/pipeline/clip_library_synth.yaml --headless
+#
+# What this runs. tests/fixtures/pipeline_synth/scene_60s.jsonl (three abstract tracks, one
+# along a fall-shaped curve; not a medical event, not training or evaluation data, POLICY.md
+# rule 4) through the TrackBook, the two allowlisted rule heads and the ClipEmitter. One spool
+# record appears under ${VIVIDLY_CLIP_DATA}/spool when the run ends: the floor firing's window
+# stays open past the end of the 60 s fixture and is closed at the last tick. This is the
+# headless run the Clip Library's `seed fixtures` command generates per fixture, and the run
+# that closes milestone M0 (design 9.2).
+#
+# Thresholds are PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md) and
+# come only from the two per-rule files plus the engine file; the demo-shrunk values match
+# configs/pipeline/synthetic_demo.yaml so the same firing appears.
+schema_version: 1
+
+run_name: clip_library_synth
+
+headless: true
+
+detections_from: tests/fixtures/pipeline_synth/scene_60s.jsonl
+
+tracks:
+  # PROVISIONAL (the acute-event rule set, POLICY.md) and DEMO-SHRUNK as in synthetic_demo.yaml.
+  baseline_window_s: 15.0
+  reap_after_s: 30.0
+  kp_conf_min: 0.3
+  fps: 5.0
+  ring_window_s: 300.0
+  baseline_min_samples: 30
+
+rules:
+  enabled:
+    - fall_then_still_v0
+    - egress_without_discharge_v0
+  include:
+    - rules/engine.yaml
+    - rules/fall_then_still_v0.yaml
+    - rules/egress_without_discharge_v0.yaml
+
+egress:
+  enabled: true
+  zones:
+    - name: door_b
+      polygon: [[1640, 380], [1920, 380], [1920, 700], [1640, 700]]
+
+store:
+  path: ":memory:"
+
+reassoc:
+  persist: false
+
+output:
+  dir: ${VIVIDLY_CLIP_DATA}/pipeline
+
+clips:
+  spool_dir: ${VIVIDLY_CLIP_DATA}/spool
+  camera_id: cam-synth-01
+  zone_id: seating_a
+  exit_zone_id: door_b
+  demo_mode: true
+  source_kind: synthetic_jsonl
+  # The wireframe render the Clip Library cuts from; `seed fixtures` writes it.
+  source_media_path: ${VIVIDLY_CLIP_DATA}/seed/renders/scene_60s.mp4
+
+dashboard:
+  host: 127.0.0.1
+  port: 8606

@@ -125,3 +125,14 @@ repos:
         language: system
         files: ^(pyproject\.toml|uv\.lock)$
         pass_filenames: false
+
+      # ---- Clip Library profiles (CLIP-LIBRARY-DESIGN.md P2) -----------------
+      # Any pipeline profile that sets clips.spool_dir is held to the non-device rules: no
+      # verifier, no third head, in-memory store, no persisted re-association, an explicit
+      # rules.enabled allowlist, nothing under outputs/. Keyed on the field, not the name.
+      - id: clip-library-profiles
+        name: Clip Library profiles hold the non-device rules
+        entry: uv run --no-sync python scripts/guards/check_clip_library_config.py
+        language: system
+        files: ^configs/pipeline/.*\.ya?ml$
+        pass_filenames: true

@@ -9,7 +9,7 @@ PY="${VIVIDLY_PY:-uv run --no-sync python}"
 fail=0
 cases=0
 accepts=0
-MIN_CASES=34
+MIN_CASES=41
 
 expect_reject() {  # expect_reject <label> <guard-cmd...>
   local label="$1"; shift
@@ -54,7 +54,8 @@ cleanup() {
         configs/_guard_selftest_weekly.yaml \
         scripts/_guard_selftest_render.py \
         data/train_ok/_guard_selftest_link \
-        data/train_ok/_guard_selftest_proto_link
+        data/train_ok/_guard_selftest_proto_link \
+        configs/pipeline/_guard_selftest_clip_*.yaml
   if [ -f "${SCRATCH}/pyproject.toml.orig" ]; then
     cp -f "${SCRATCH}/pyproject.toml.orig" pyproject.toml
   fi
@@ -386,6 +387,43 @@ rm -f "${SCRATCH}/no_fisheye_allowlist.orig"
 # 6f. ...and the tree as checked in must pass, probes removed. A failure here means either a
 # real new reference or an inventory entry whose file has been renamed out from under it.
 expect_accept "nofisheye/clean tree" $PY scripts/guards/check_no_fisheye.py
+
+# ---- 8. Clip Library profiles (CLIP-LIBRARY-DESIGN.md P2) ----------------------
+# A profile that writes a Clip spool is held to the non-device rules whatever its name. Each
+# probe below is the committed synthetic profile with exactly one rule broken.
+clip_probe() {  # clip_probe <suffix> <python-transform-expression>
+  $PY - "$1" "$2" <<'PYEOF'
+import sys, re
+from pathlib import Path
+suffix, transform = sys.argv[1], sys.argv[2]
+text = Path("configs/pipeline/clip_library_synth.yaml").read_text(encoding="utf-8")
+text = eval(transform)
+Path(f"configs/pipeline/_guard_selftest_clip_{suffix}.yaml").write_text(text, encoding="utf-8")
+PYEOF
+}
+clip_probe verify 'text + "\nverify:\n  policy: annotate\n  heads: {}\n"'
+expect_reject "clip/verify block in a spool-writing profile" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_verify.yaml
+clip_probe head 'text.replace("    - egress_without_discharge_v0\n", "    - egress_without_discharge_v0\n    - seizure_candidate_v0\n", 1)'
+expect_reject "clip/third head listed in rules.enabled" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_head.yaml
+clip_probe store 'text.replace("path: \":memory:\"", "path: outputs/pipeline/alerts.sqlite")'
+expect_reject "clip/on-disk store outside the data directory" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_store.yaml
+clip_probe reassoc 'text.replace("persist: false", "persist: true")'
+expect_reject "clip/persisted re-association" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_reassoc.yaml
+clip_probe enabled 're.sub(r"  enabled:\n(    - .*\n)+", "", text)'
+expect_reject "clip/rules.enabled omitted" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_enabled.yaml
+clip_probe outputs 'text.replace("dir: ${VIVIDLY_CLIP_DATA}/pipeline", "dir: outputs/pipeline")'
+expect_reject "clip/output under outputs/" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_outputs.yaml
+clip_probe index 'text.replace("    - rules/engine.yaml\n", "    - rules.yaml\n", 1)'
+expect_reject "clip/the rules index (every head) included" \
+  $PY scripts/guards/check_clip_library_config.py configs/pipeline/_guard_selftest_clip_index.yaml
+rm -f configs/pipeline/_guard_selftest_clip_*.yaml
+expect_accept "clip/clean tree" $PY scripts/guards/check_clip_library_config.py
 
 # ---- 7. The training surface as checked in ----------------------------------
 # Both training guards must be quiet on the tree as it stands. A failure here is a real

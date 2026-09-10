@@ -1,0 +1,133 @@
+# Vividly Clip Library profile: the non-device facility-safety layer on a live camera
+# (CLIP-LIBRARY-DESIGN.md, sections 2.1, 2.3, 2.7; owner decision in POLICY.md, 2026-09-09).
+#
+#   VIVIDLY_CLIP_DATA=/path/to/data REOLINK_RTSP_URL='rtsp://...' \
+#     uv run python scripts/run_pipeline.py --config configs/pipeline/clip_library.yaml --headless
+#
+# What this runs. The models of record over the live camera named by the environment
+# variable in `source.rtsp_env` (the URL itself is never written into a config), the
+# exclusion masks blacked out before detection, the tracker, the TrackBook, and exactly two
+# rule heads: fall_then_still_v0 and egress_without_discharge_v0. `rules.enabled` is the
+# allowlist and is mandatory in any profile that writes a Clip spool; the engine never
+# constructs a head that is not listed, and the per-rule file of the third head is not even
+# included. There is no `verify:` block, on purpose and by guard: the non-device layer runs
+# no verifier head at all until counsel question CQ-30 is answered.
+#
+# Where things go. `clips.spool_dir` is the directory the Clip Library polls: one JSON file
+# per allowlisted firing, written by src/vividly/clips_emitter.py after the store commits,
+# named by a hash that carries no rule id. The pipeline's own event store is in memory
+# (`store.path: ":memory:"`): the spool record carries the committed row, so nothing the
+# library needs is lost and no file of firings the library rejected is ever written.
+# `latency.jsonl` lands under `${VIVIDLY_CLIP_DATA}/pipeline/<run_name>/`, on the encrypted
+# volume, where the library's retention job rotates it; nothing is written under outputs/.
+# Re-association is off and may not persist.
+#
+# scripts/guards/check_clip_library_config.py refuses any profile with `clips.spool_dir`
+# that breaks one of those rules; scripts/run_pipeline.py refuses the same things at start.
+#
+# Thresholds. Every value reached through `rules.include` is PROVISIONAL (the acute-event
+# rule set, POLICY.md; docs/CALIBRATION.md); `egress_absent_min_s` is overridden here to the
+# stage-one cap of the Clip Library design (section 2.3: the Clip is cut when the person has
+# been absent this long; the no-return window is watched by the emitter afterwards). Do not
+# quote a number from this run and do not read a firing count as a false-alarm rate.
+schema_version: 1
+
+run_name: clip_library
+
+headless: true
+
+# --- the live camera ------------------------------------------------------------
+source:
+  # The name of the environment variable that holds the RTSP URL (credentials included).
+  rtsp_env: REOLINK_RTSP_URL
+  camera_id: cam-garage-01
+  # Exclusion masks in source-frame pixels, blacked out before detection (design 2.3).
+  # The same rectangles are configured on the library side (cameras.yaml exclusion_masks)
+  # so a stored Clip never shows them either. Empty until a site commissions the camera.
+  masks: []
+
+# --- perception, the models of record (final_models/<lane>/README.md) ----------
+detector:
+  backend: rtdetr_onnx
+  onnx: final_models/eyes/model.onnx
+  input_size: [640, 640]
+  device: cpu
+  score_thr: 0.3
+  name: rtdetrv4-s-person-v2-40262049
+
+pose:
+  backend: rtmlib
+  onnx: final_models/joints/model.onnx
+  input_size: [192, 256]
+  device: cpu
+  name: rtmpose-m-person-v2-6ba96285
+
+tracker:
+  backend: botsort
+  track_activation_threshold: 0.25
+  lost_track_buffer: 1800
+  minimum_matching_threshold: 0.8
+  frame_rate: 15
+  minimum_consecutive_frames: 1
+
+# --- track layer ------------------------------------------------------------------
+tracks:
+  # PROVISIONAL (the acute-event rule set, POLICY.md): shipped placeholders, unchanged.
+  baseline_window_s: 300.0
+  reap_after_s: 30.0
+  kp_conf_min: 0.3
+  fps: 15.0
+  ring_window_s: 300.0
+  baseline_min_samples: 30
+
+# --- rules: the allowlist and the two per-rule files ------------------------------
+rules:
+  enabled:
+    - fall_then_still_v0
+    - egress_without_discharge_v0
+  include:
+    - rules/engine.yaml
+    - rules/fall_then_still_v0.yaml
+    - rules/egress_without_discharge_v0.yaml
+  # PROVISIONAL (the acute-event rule set, POLICY.md; docs/CALIBRATION.md): the Clip
+  # Library stage-one cap (design 2.3, at most 180 s). Overrides the included 600 s.
+  egress_absent_min_s: 120.0
+
+# --- the egress head: per-site geometry in source-frame pixels ---------------------
+egress:
+  enabled: true
+  zones:
+    - name: door_b
+      polygon: [[1640, 380], [1920, 380], [1920, 700], [1640, 700]]
+
+# --- the pipeline's own store and logs -----------------------------------------------
+store:
+  path: ":memory:"
+
+reassoc:
+  persist: false
+
+output:
+  dir: ${VIVIDLY_CLIP_DATA}/pipeline
+
+# --- the Clip spool ------------------------------------------------------------------
+clips:
+  spool_dir: ${VIVIDLY_CLIP_DATA}/spool
+  camera_id: cam-garage-01
+  zone_id: seating_a
+  exit_zone_id: door_b
+  # The founder's rig is a demonstration host (design D-E): every Clip it produces is
+  # watermarked and stays in a demo store. A hospital site sets this to false.
+  demo_mode: true
+  pre_roll_s: 30.0
+  post_roll_max_s: 120.0
+  contact_tail_s: 15.0
+  pre_roll_egress_s: 60.0
+  egress_tail_s: 15.0
+  no_return_s: 1200.0
+  contact_px: 150.0
+  contact_min_s: 3.0
+
+dashboard:
+  host: 127.0.0.1
+  port: 8605

@@ -78,6 +78,19 @@ and with `--stride N` to process every Nth source frame. At 25 fps, `--stride 5`
 inferences per second. In continuous mode the source is reopened with backoff if the stream
 drops, so a camera blip does not end the run.
 
+## The Clip Library profile
+
+The 2026-09-09 owner decision in `POLICY.md` (section 2) admits one use of the live feed
+beyond bring-up: `configs/pipeline/clip_library.yaml` reads the camera through
+`source: {rtsp_env: REOLINK_RTSP_URL, camera_id: ...}` (the URL stays in the environment and
+is never written into a config), stamps every frame with the wall clock, blacks out the
+configured exclusion masks before detection, runs the two allowlisted rule heads and writes
+one spool record per firing into the Clip Library's data directory. Nothing from the rig
+enters any corpus, the subject is the founder alone, and every Clip the rig produces is a
+watermarked demonstration in a demo store. Only the `clip_library` and `device_track`
+profile families may open the live source; `scripts/run_pipeline.py` refuses it elsewhere.
+Exactly one pipeline runs on the rig at a time (`VIVIDLY_MODE`).
+
 ## Notes
 
 - `LiveRTSPSource` (`src/vividly/sources/rtsp.py`) is the working body of the `RTSPSource` stub.

@@ -47,6 +47,18 @@ and generated fixtures. Live mode means a site's own camera, at their site, late
 `NotImplementedError`; the working body for bring-up against real hardware is described in
 [LIVE_CAMERA.md](LIVE_CAMERA.md).
 
+One live path exists, on an owner decision recorded in `POLICY.md` on 2026-09-09: the Clip
+Library profile (`configs/pipeline/clip_library.yaml`) reads a camera through
+`source: {rtsp_env: <ENV VAR>, camera_id: ...}`, which `LiveRTSPSource` serves with a wall-clock
+stamp (`wall_utc`) on every frame and a `source_epoch_utc` re-based on every reconnect or
+stall, blacks out the configured exclusion masks before detection, keeps its event store in
+memory, runs exactly the two rule heads named in its mandatory `rules.enabled` allowlist, and
+hands each firing to `src/vividly/clips_emitter.py`, which writes a spool record for the
+separate Clip Library after the store commits. It records event Clips only, never a continuous
+stream; the ring that feeds the cut lives in the library's memory and is not this pipeline's.
+`scripts/guards/check_clip_library_config.py` holds every profile that writes a spool to those
+rules, whatever the file is called.
+
 ## 3. Component map
 
     sources  ->  tracks  ->  rules  ->  verifier  ->  events  ->  dashboard

@@ -30,6 +30,7 @@ guards:
 	uv run python scripts/guards/check_train_data_paths.py
 	uv run python scripts/guards/check_config_registry.py
 	uv run python scripts/guards/check_reid_weight_sources.py
+	uv run python scripts/guards/check_clip_library_config.py
 	uv run lint-imports
 	bash scripts/guards/selftest.sh
 
