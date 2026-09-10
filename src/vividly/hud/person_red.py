@@ -13,7 +13,7 @@ What it draws on a CONFIRMED region, and why:
   * White tick marks along the outline and one slow white sweep around it: the measurement
     furniture, in white so that the instrument and the alarm are never the same colour.
   * A red chip tied to the region by a leader, carrying the body part, the size and the age:
-    "HEAD  0.12%  3s". A region on a person is small (a scalp patch is a few dozen display
+    "HEAD  3s". A region on a person is small (a scalp patch is a few dozen display
     pixels across at this distance), so the chip is the part a viewer reads first.
 
 No bracket around the region: the person already carries draw_tracks' box, and a second set
@@ -45,7 +45,6 @@ from vividly.hud.substance import (
     _chip,
     _fill,
     _k,
-    _pct,
     _points,
     _resample,
 )
@@ -55,7 +54,7 @@ from vividly.hud.substance import (
 _TICK_PX = 12.0
 # The fill is lighter than a pool's: the region sits on a face or a scalp, and a viewer must
 # still be able to see what is under it.
-_FILL_SCALE = 0.75
+_FILL_SCALE = 0.35  # light: the blood under it is the thing to see
 _DOT_R = 5
 _MAX_REGIONS = 3  # matches PersonRedConfig.max_regions; a bound on draw cost
 
@@ -111,8 +110,6 @@ def draw_person_red(img, state, t_now: float) -> None:
     hits = getattr(state, "hits", ()) if state is not None else ()
     if not hits:
         return
-    h, w = img.shape[:2]
-    frame_px = float(max(1, h * w))
     for hit in hits:
         if getattr(hit, "state", "") != "confirmed":
             continue
@@ -123,8 +120,10 @@ def draw_person_red(img, state, t_now: float) -> None:
             (_points(p) for p in polys), key=lambda q: -cv2.contourArea(q) if len(q) >= 3 else 0.0
         )
         shown = shown[:_MAX_REGIONS]
-        area = sum(cv2.contourArea(q) if len(q) >= 3 else 1.0 for q in shown)
-        label = f"{hit.part.upper()}  {_pct(area / frame_px)}  {float(hit.held_s):0.0f}s"
+        # Part and age only. The area share of the frame was a measurement, not information:
+        # at this distance a bleeding scalp is a few hundredths of a percent of the picture,
+        # and "<0.01%" on screen read as the system saying there was almost nothing there.
+        label = f"{hit.part.upper()}  {float(hit.held_s):0.0f}s"
         # One chip per person, on the largest region; the others are outlined only.
         for i, pts in enumerate(shown):
             _draw_region(img, pts, label if i == 0 else None, t_now)

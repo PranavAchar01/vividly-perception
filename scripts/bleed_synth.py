@@ -1130,6 +1130,24 @@ class Params:
     spec_k: float = 0.3
     spec_alpha: float = 60.0
     ss: int = 3
+    # Legibility at this camera's distance, not physics. The head is ~63 px wide here, a
+    # third of a pixel per millimetre, so a true-to-scale 4 mm rivulet is under 2 px and
+    # reads as a speck on a 720p screen. This widens every stream, bead and film path on the
+    # body by the factor (the depth, colour and shading model are untouched, so a wide sheet
+    # still shades as a thin film); flow_ml_s should rise with it, since a wider stream lays
+    # down more film per centimetre and would otherwise run out sooner. 1.0 is to scale.
+    vis_scale: float = 1.0
+    # Where the laceration is, in head radii from the head's centre at onset (+x right, +y
+    # down in the image). Empty: under the hand that lands on the head (derive_wound). The
+    # hand-derived wound is the realistic reading of the take, but the palm then covers it
+    # and nearly all the blood runs under the hand, out of sight; an exposed forehead
+    # wound bleeds where the camera can see it.
+    wound_rel: tuple = ()
+    # Headroom over the measured red envelope. The envelope is the reddest thing in THIS plate
+    # per luma band, and a grey garage has almost nothing red above the ladder's dark band,
+    # so at face and palm brightness it caps blood at a faint tint. >1 lets blood be as red
+    # as blood, while still moving an out-of-gamut colour toward black along its own hue.
+    gamut_gain: float = 1.0
     extra: dict = field(default_factory=dict)
 
 
@@ -1756,7 +1774,7 @@ class Blood:
         self.b_ph, self.b_thk = self.b_ph[keep], self.b_thk[keep]
 
     def _width_mm(self, V):
-        return np.clip(1.3 * np.cbrt(np.maximum(V, 0.1)), 2.0, 7.0)
+        return np.clip(1.3 * np.cbrt(np.maximum(V, 0.1)), 2.0, 7.0) * self.prm.vis_scale
 
     # ------------------------------------------------------------------ frame step
     def step(self, i: int, t: float, M: dict):
@@ -1952,7 +1970,7 @@ class Blood:
     def _film_path(self, p, pts_can, h_mm, w_mm):
         c = self.cv[p]
         pc = c.to_c(pts_can)
-        r = 0.5 * w_mm * self.ppm_of(p) / self.scale(p, self.i) * c.ss
+        r = 0.5 * w_mm * self.prm.vis_scale * self.ppm_of(p) / self.scale(p, self.i) * c.ss
         for a, b in itertools.pairwise(pc):
             _stamp(c.res, a[0], a[1], b[0], b[1], r, r, h_mm, 0.5, 0)
 
@@ -2975,6 +2993,8 @@ def main(argv=None) -> int:
         f"key light {light.round(2).tolist()}"
     )
     gamut = measure_gamut(src, i_light)
+    if prm.gamut_gain != 1.0:
+        gamut["cr_max"] = [c * prm.gamut_gain for c in gamut["cr_max"]]
     log(
         f"camera red envelope (Y: Cr max): "
         f"{', '.join(f'{a_:.0f}:{b_:.0f}' for a_, b_ in zip(gamut['y'], gamut['cr_max'], strict=True))}"
@@ -3007,6 +3027,9 @@ def main(argv=None) -> int:
             **{f"T{p}": np.stack([tracks[p].T[i] for i in idx]) for p in BODY},
         )
     wound, side, dl, dr = derive_wound(tr, sc, tracks[HEAD], fps)
+    if prm.wound_rel:
+        wound = (sc.head_c[i_on] + np.float32(prm.wound_rel) * tr.head_r).astype(np.float32)
+        side = f"placed at {tuple(prm.wound_rel)} head radii from the head centre, not the"
     log(
         f"wound from the {side} wrist (mean wrist-head distance L {dl:.0f} px, R {dr:.0f} px): "
         f"({wound[0] + roi.x0:.1f}, {wound[1] + roi.y0:.1f}) in head coordinates at onset"

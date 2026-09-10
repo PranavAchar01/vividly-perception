@@ -173,6 +173,7 @@ class PersonRedConfig:
     prime_s: float = 2.0  # learn the person before reporting anything on them
     min_hold_s: float = 1.5
     release_s: float = 1.0
+    duty_min: float = _DUTY_MIN  # share of recent updates the region must be present in
     box_pad: float = 0.10  # crop margin around the tracked box, fraction of its size
     kp_thr: float = 0.30  # keypoint confidence below which a joint is not used
     max_regions: int = 3  # largest N regions per person reported
@@ -783,7 +784,7 @@ class PersonRedAnalyzer:
             held = now - tr.active_since
             if tr.state != "confirmed":
                 duty = sum(d for _, d in tr.duty_hist) / len(tr.duty_hist)
-                ready = held >= cfg.min_hold_s and duty >= _DUTY_MIN
+                ready = held >= cfg.min_hold_s and duty >= cfg.duty_min
                 tr.state = "confirmed" if ready else "candidate"
         elif tr.active_since is not None:
             tr.updates += 1

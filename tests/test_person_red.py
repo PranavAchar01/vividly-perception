@@ -499,8 +499,9 @@ def test_draw_marks_the_region_and_survives_odd_shapes() -> None:
         draw_person_red(img, PersonRedState(hits=(_hit(polys=polys),)), 2.0)
 
 
-def test_draw_label_carries_part_size_and_age() -> None:
-    # The chip text is what a viewer reads; check the label string the draw builds.
+def test_draw_label_carries_part_and_age() -> None:
+    # The chip text is what a viewer reads; check the label string the draw builds. No area
+    # percentage: at camera distance it printed "<0.01%", which read as nothing being there.
     import vividly.hud.person_red as hud
 
     seen = []
@@ -512,4 +513,4 @@ def test_draw_label_carries_part_size_and_age() -> None:
     finally:
         hud._chip = real
     assert len(seen) == 1
-    assert seen[0].startswith("HEAD  ") and seen[0].endswith("  3s") and "%" in seen[0]
+    assert seen[0] == "HEAD  3s"

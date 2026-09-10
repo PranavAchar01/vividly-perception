@@ -46,6 +46,7 @@ the per-track analyzer lifecycle, and the shipped thresholds.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import importlib.util
 import json
 import sys
@@ -107,6 +108,9 @@ box_from_keypoints = LIVE.box_from_keypoints
 body_confidence = LIVE.body_confidence
 instant_fall = LIVE.instant_fall  # the same relabel the appliance applies, not a copy of it
 merge_alerts = LIVE.merge_alerts
+rescue_tracks = LIVE.rescue_tracks
+add_followers = LIVE.add_followers
+RESCUE_MIN_SCORE = LIVE.RESCUE_MIN_SCORE
 dedupe_views = LIVE.dedupe_views
 _PRUNE_S = LIVE._PRUNE_S
 _CONF_ALPHA = LIVE._CONF_ALPHA
@@ -336,11 +340,15 @@ def run(a: argparse.Namespace) -> int:
     substance = SubstanceAnalyzer(SubstanceConfig()) if a.substance else None
     person_red = PersonRedAnalyzer(_person_red_cfg(a)) if a.person_red else None
     last_pr = None  # (t, state) of the last frame with a confirmed red-on-person hit
+    last_outline: dict = {}  # tid (None: any) -> (t, polygons) of the last confirmed outline
 
     out = _writer(a.out, fps, (disp_w, disp_h)) if a.out else None
     log = EventLog()
     trace = Path(a.trace).open("w") if a.trace else None  # noqa: SIM115 (closed below)
 
+    recent: dict = {}  # rescue_tracks' memory
+    follow_box: dict = {}  # add_followers: tid -> joints box of the last drawn frame
+    det_seen: dict = {}
     per_track: dict[int, list] = {}
     last_confirm: dict[int, tuple] = {}  # tid -> (t, sz, fl, box) of the last CONFIRMED frame
     live_box: dict[int, np.ndarray] = {}
@@ -389,8 +397,11 @@ def run(a: argparse.Namespace) -> int:
         h_img, w_img = frame.shape[:2]
 
         # --- detect + track, every frame ---------------------------------------------------
-        d = det_m.detect_one(frame).filter(a.score)
-        tracked = tracker.update(d, idx)
+        d_all = det_m.detect_one(frame).filter(RESCUE_MIN_SCORE)
+        tracked = tracker.update(d_all.filter(a.score), idx)
+        # The appliance's rescue: a person on screen a moment ago and missing now is
+        # continued on a low-score box where they were (live_stream.rescue_tracks).
+        tracked = rescue_tracks(tracked, d_all, recent, now, a.score)
         # A fresh detection is authoritative on every frame here, so no box is ever carried
         # forward; box_from_keypoints still runs because the appliance's next-frame crop is
         # part of the pose path it feeds.
@@ -398,6 +409,7 @@ def run(a: argparse.Namespace) -> int:
             int(tracked.track_ids[i]): tracked.xyxy[i].astype(np.float32)
             for i in range(len(tracked))
         }
+        tracked = add_followers(tracked, follow_box, det_seen, now)
         all_tids = {int(t) for t in tracked.track_ids} if len(tracked) else set()
 
         # --- pose, capped and prioritized exactly as the appliance does ---------------------
@@ -452,6 +464,7 @@ def run(a: argparse.Namespace) -> int:
                 else:
                     good[tid] = 0
                 if good[tid] < _PERSON_HOLD:
+                    follow_box.pop(tid, None)
                     if trace is not None:
                         rows.append(
                             {
@@ -462,6 +475,7 @@ def run(a: argparse.Namespace) -> int:
                             }
                         )
                     continue
+                follow_box[tid] = live_box[tid]
                 sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 fl = instant_fall(ent[1].update(kp, sc, box, now), a.fall_instant) if ent[1] else FallState()
                 ent[2] = now
@@ -593,6 +607,24 @@ def run(a: argparse.Namespace) -> int:
                 last_pr = (now, pr)
             elif last_pr is not None and now - last_pr[0] <= a.alarm_release:
                 pr = last_pr[1]
+            # The analyzer keeps an episode confirmed through frames where the red misses
+            # its colour test (measured on the head-wound take: about every other frame from
+            # 34.8 s), but it reports no outline on those frames, so the region and its chip
+            # strobed on and off under a steady banner. While a hit is confirmed, draw the
+            # last outline seen for it, for as long as the alarm's own release would hold.
+            fresh = [h for h in pr.hits if h.state == "confirmed" and h.polygons]
+            for h in fresh:
+                last_outline[h.tid] = (now, h.polygons)
+            if fresh:
+                last_outline[None] = (now, fresh[0].polygons)
+            held = []
+            for h in pr.hits:
+                if h.state == "confirmed" and not h.polygons:
+                    t_o, polys = last_outline.get(h.tid) or last_outline.get(None) or (-1e18, ())
+                    if now - t_o <= max(a.alarm_release, person_red.cfg.release_s):
+                        h = dataclasses.replace(h, polygons=polys)
+                held.append(h)
+            pr = dataclasses.replace(pr, hits=tuple(held))
 
         # --- substance ---------------------------------------------------------------------
         sub = None

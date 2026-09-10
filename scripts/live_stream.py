@@ -69,8 +69,13 @@ class TrackView:
 
 SKELETON: tuple[tuple[int, int], ...] = (
     (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (11, 12), (5, 11), (6, 12),
-    (11, 13), (13, 15), (12, 14), (14, 16), (0, 1), (0, 2), (1, 3), (2, 4), (0, 5), (0, 6),
+    (11, 13), (13, 15), (12, 14), (14, 16),
 )  # fmt: skip
+# No face edges. Five face points joined by six lines drew a small tangle exactly where a
+# head wound, a hand on the face or a turned head is the thing worth seeing; the head is
+# marked by a short neck stub instead (draw_skeleton), which says where it is and covers
+# nothing. Dots only on the twelve body joints, for the same reason.
+_BODY_JOINTS: tuple[int, ...] = tuple(range(5, 17))
 
 # Brand palette (BGR).
 _ACCENT = (242, 157, 169)  # lavender
@@ -108,7 +113,11 @@ def _track_style(v: TrackView) -> tuple[tuple[int, int, int], str]:
     if v.fall.state == "fall":
         return _RED, "FALL"
     if v.seizure.state == "seizure":
-        return _RED, f"SEIZURE {v.seizure.dominant_hz:.0f}Hz"
+        hz = float(v.seizure.dominant_hz)
+        # A held alarm (release timer, absent track) carries no fresh spectrum and reports
+        # 0 Hz; printing "0Hz" on a confirmed seizure reads as a fault, so the rate is shown
+        # only when there is one.
+        return _RED, f"SEIZURE {hz:.0f}Hz" if hz >= 1.0 else "SEIZURE"
     # Nothing amber. A building state used to tint the box and print "analyzing", which on
     # film reads as the system hedging, and it painted clutter yellow for a second at a
     # time. The box stays neutral until an event confirms, and then it is unmistakable.
@@ -116,14 +125,23 @@ def _track_style(v: TrackView) -> tuple[tuple[int, int, int], str]:
 
 
 def draw_skeleton(img: np.ndarray, kps: np.ndarray, sc: np.ndarray, kp_thr: float) -> None:
+    """A thin line drawing of the body: one-pixel bones at 720p (scaled with the frame),
+    small joint dots, no face. Thin so it reads as an annotation on the person rather than
+    a costume over them, and so it hides as little of the picture under it as possible."""
+    k = img.shape[0] / 720.0
+    t = max(1, round(k))
+    r = max(2, round(2 * k))
+    pts = kps.astype(np.float32)
     for a, b in SKELETON:
         if sc[a] > kp_thr and sc[b] > kp_thr:
-            cv2.line(
-                img, tuple(kps[a].astype(int)), tuple(kps[b].astype(int)), _BONE, 2, cv2.LINE_AA
-            )
-    for j in range(len(kps)):
+            cv2.line(img, tuple(pts[a].astype(int)), tuple(pts[b].astype(int)), _BONE, t, cv2.LINE_AA)
+    if sc[0] > kp_thr and sc[5] > kp_thr and sc[6] > kp_thr:
+        neck = (pts[5] + pts[6]) / 2.0
+        tip = neck + 0.45 * (pts[0] - neck)  # stops short of the face
+        cv2.line(img, tuple(neck.astype(int)), tuple(tip.astype(int)), _BONE, t, cv2.LINE_AA)
+    for j in _BODY_JOINTS:
         if sc[j] > kp_thr:
-            cv2.circle(img, tuple(kps[j].astype(int)), 3, _JOINT, -1, cv2.LINE_AA)
+            cv2.circle(img, tuple(pts[j].astype(int)), r, _JOINT, -1, cv2.LINE_AA)
 
 
 def draw_tracks(img: np.ndarray, tracks: list[TrackView], kp_thr: float) -> None:
@@ -568,6 +586,139 @@ def capture_loop(url: str, shared: Shared, disp_w: int) -> None:
 
 
 _PRUNE_S = 5.0  # drop a track's analyzers this long after it was last seen
+# --- keeping hold of a person the detector stops being sure about ------------------------
+# Measured on takes/20260909-203345 at 95.3-97.1 s: a person going down and lying prone is
+# still found by the detector on every frame, at 0.40-0.47, which the 0.5 gate throws away.
+# BoT-SORT's own low-score pass cannot take them either, because it needs IoU >= 0.5 with
+# the predicted box and a standing box and the same person prone overlap by about 0.33. So
+# the alarm kept the box from before the fall until the detector was sure again, a body
+# length from the patient. The rescue below hands a low-score box to a track that was on
+# screen a moment ago and is missing now, when it overlaps where that person was. It never
+# starts a track (only the 0.5 gate does that, so cartons stay out), and the pose gate in
+# the pose stage still has to see a body in it before anything is drawn.
+RESCUE_MIN_SCORE = 0.15  # the lowest detection a known track may be continued with
+_RESCUE_IOU = 0.2  # overlap with the person's last box
+_RESCUE_RECENT_S = 2.0  # only a track seen this recently is looked for
+_RESCUE_MAX_S = 60.0  # longest a track may run on rescued boxes alone
+_SAME_PERSON_IOU = 0.3  # a lost track's box this much on a live one is that person
+
+
+def _iou_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """IoU of every box in a (N,4) against every box in b (M,4), as (N,M)."""
+    if len(a) == 0 or len(b) == 0:
+        return np.zeros((len(a), len(b)), np.float32)
+    x1 = np.maximum(a[:, None, 0], b[None, :, 0])
+    y1 = np.maximum(a[:, None, 1], b[None, :, 1])
+    x2 = np.minimum(a[:, None, 2], b[None, :, 2])
+    y2 = np.minimum(a[:, None, 3], b[None, :, 3])
+    inter = np.clip(x2 - x1, 0, None) * np.clip(y2 - y1, 0, None)
+    area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
+    area_b = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
+    return inter / (area_a[:, None] + area_b[None, :] - inter + 1e-6)
+
+
+def rescue_tracks(tracked, raw, recent: dict, now: float, score: float):
+    """Continue recently seen tracks the tracker dropped this step on a low-score box.
+
+    `raw` is the detector output down to RESCUE_MIN_SCORE; `tracked` is what the tracker
+    returned from the boxes at or above `score`. `recent` maps tid -> [box, t_seen, t_sure]
+    and is updated in place: t_seen is the last step the track had any box, t_sure the last
+    step it had one at or above `score`. Returns `tracked` with the rescued boxes appended.
+    """
+    from vividly.models.base import Detections
+
+    tids = [int(t) for t in tracked.track_ids] if len(tracked) else []
+    for i, tid in enumerate(tids):
+        prev = recent.get(tid)
+        recent[tid] = [tracked.xyxy[i].astype(np.float32), now, now if prev is None or
+                       float(tracked.scores[i]) >= score else prev[2]]
+    missing = [
+        tid for tid, (_, t_seen, t_sure) in recent.items()
+        if tid not in tids and now - t_seen <= _RESCUE_RECENT_S and now - t_sure <= _RESCUE_MAX_S
+    ]
+    if missing and len(tracked):
+        # Already re-found under another id: the tracker has someone where this track was.
+        # Continuing the old id too would put one person on screen twice, and split every
+        # per-person clock (a hold, a seizure window) across the two.
+        taken = _iou_rows(np.stack([recent[t][0] for t in missing]), tracked.xyxy).max(axis=1)
+        for t in [t for t, iou in zip(missing, taken, strict=True) if iou >= _SAME_PERSON_IOU]:
+            del recent[t]
+        missing = [t for t in missing if t in recent]
+    for tid in [t for t, (_, t_seen, _) in recent.items() if now - t_seen > _RESCUE_MAX_S]:
+        del recent[tid]
+    if not missing or len(raw) == 0:
+        return tracked
+    free = np.ones(len(raw), bool)
+    if len(tracked):  # a box the tracker already used belongs to someone
+        free &= _iou_rows(raw.xyxy, tracked.xyxy).max(axis=1) < 0.5
+    add_box, add_sc, add_id = [], [], []
+    ious = _iou_rows(np.stack([recent[t][0] for t in missing]), raw.xyxy)
+    for k in np.argsort(-ious.max(axis=1)):
+        ok = free & (ious[k] >= _RESCUE_IOU)
+        if not ok.any():
+            continue
+        j = int(np.argmax(np.where(ok, raw.scores, -1.0)))
+        free[j] = False
+        tid = missing[k]
+        add_box.append(raw.xyxy[j])
+        add_sc.append(raw.scores[j])
+        add_id.append(tid)
+        recent[tid][0] = raw.xyxy[j].astype(np.float32)
+        recent[tid][1] = now
+    if not add_id:
+        return tracked
+    base_ids = tracked.track_ids if len(tracked) else np.zeros((0,), np.int32)
+    return Detections(
+        xyxy=np.concatenate([tracked.xyxy.reshape(-1, 4), np.stack(add_box)]).astype(np.float32),
+        scores=np.concatenate([tracked.scores, np.asarray(add_sc)]).astype(np.float32),
+        class_ids=np.concatenate([tracked.class_ids, np.zeros(len(add_id))]).astype(np.int32),
+        track_ids=np.concatenate([base_ids, np.asarray(add_id)]).astype(np.int32),
+    )
+
+
+# Frames the detector returns nothing near the patient at any score (measured: 11 frames
+# across 95.2-96.8 s of the same take, mid-collapse and just after) are carried by the pose
+# model instead: the last box the joints gave is posed again, and the person gate decides
+# whether a body is still there. Bounded by how long ago the detector last had a box for
+# them, so a place someone has left cannot hold a track for long.
+_FOLLOW_S = 10.0
+
+
+def add_followers(tracked, follow_box: dict, det_seen: dict, now: float):
+    """Append the last pose-derived box of every recently seen track missing from `tracked`.
+
+    `follow_box` maps tid -> box from the joints of that person's last DRAWN frame (the
+    caller keeps it); `det_seen` maps tid -> the last time the tracker or rescue_tracks had a
+    box for them, and is updated here. Appended entries carry score 0.
+    """
+    from vividly.models.base import Detections
+
+    tids = {int(t) for t in tracked.track_ids} if len(tracked) else set()
+    for t in tids:
+        det_seen[t] = now
+    for t in [t for t in follow_box if now - det_seen.get(t, -1e18) > _FOLLOW_S]:
+        del follow_box[t]
+    add = [t for t in follow_box if t not in tids]
+    if add and len(tracked):
+        # The same guard as rescue_tracks: a lost track whose box sits on a live one has
+        # been re-found under another id, and carrying it would draw that person twice.
+        taken = _iou_rows(np.stack([follow_box[t] for t in add]), tracked.xyxy).max(axis=1)
+        for t in [t for t, iou in zip(add, taken, strict=True) if iou >= _SAME_PERSON_IOU]:
+            del follow_box[t]
+        add = [t for t in add if t in follow_box]
+    if not add:
+        return tracked
+    base_ids = tracked.track_ids if len(tracked) else np.zeros((0,), np.int32)
+    return Detections(
+        xyxy=np.concatenate(
+            [tracked.xyxy.reshape(-1, 4), np.stack([follow_box[t] for t in add])]
+        ).astype(np.float32),
+        scores=np.concatenate([tracked.scores, np.zeros(len(add))]).astype(np.float32),
+        class_ids=np.concatenate([tracked.class_ids, np.zeros(len(add))]).astype(np.int32),
+        track_ids=np.concatenate([base_ids, np.asarray(add)]).astype(np.int32),
+    )
+
+
 _BOX_KP_THR = 0.3  # keypoint confidence that counts towards a refreshed crop
 _BODY_KP = 8  # keypoints averaged when asking "is this actually a person"
 _CONF_ALPHA = 0.4  # weight of the newest frame in the running body-confidence score
@@ -644,14 +795,16 @@ def detect_loop(shared: Shared, cfg_path: str, score: float, det_hz: float) -> N
     rate = Rate()
     last_seq = -1
     frame_idx = 0
+    recent: dict = {}  # rescue_tracks' memory of who was on screen
     min_period = 1.0 / det_hz if det_hz > 0 else 0.0
     while True:
         raw, last_seq, t_cap = shared.wait_raw(last_seq)
         if raw is None:
             continue
         t0 = time.perf_counter()
-        d = det_m.detect_one(raw).filter(score)
-        tracked = tracker.update(d, frame_idx)
+        d_all = det_m.detect_one(raw).filter(RESCUE_MIN_SCORE)
+        tracked = tracker.update(d_all.filter(score), frame_idx)
+        tracked = rescue_tracks(tracked, d_all, recent, t_cap, score)
         frame_idx += 1
         shared.put_tracked(tracked, last_seq, t_cap, rate.tick())
         # Leave the cores to the pose stage between refreshes. Detecting flat out would
@@ -683,6 +836,8 @@ def infer_loop(
     # tid -> [SeizureAnalyzer|None, FallAnalyzer|None, last_seen]. Each tracked person gets
     # their OWN analyzers so a seizure or fall is gated per-identity through a crowd.
     per_track: dict[int, list] = {}
+    follow_box: dict = {}  # tid -> box from the joints of the last drawn frame
+    det_seen: dict = {}  # tid -> last time the detector had a box for them
     last_seq = -1
     last_det_seq = -1
     live_box: dict[int, np.ndarray] = {}
@@ -705,6 +860,7 @@ def infer_loop(
                 for i in range(len(tracked))
             }
 
+        tracked = add_followers(tracked, follow_box, det_seen, now)
         # Pose only the confirmed tracks (bounded for latency: the largest/strongest first).
         all_tids = {int(t) for t in tracked.track_ids} if len(tracked) else set()
 
@@ -755,7 +911,9 @@ def infer_loop(
                 else:
                     good[tid] = 0
                 if good[tid] < _PERSON_HOLD:
+                    follow_box.pop(tid, None)
                     continue
+                follow_box[tid] = live_box[tid]
                 sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 fl = instant_fall(ent[1].update(kp, sc, box, now), fall_instant) if ent[1] else FallState()
                 ent[2] = now
