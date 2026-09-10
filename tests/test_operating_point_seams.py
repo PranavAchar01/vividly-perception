@@ -212,10 +212,21 @@ def test_replay_demo_carries_the_recommended_operating_points() -> None:
     assert verify["policy"] == "annotate"
     heads = verify["heads"]
     assert set(heads) == {"seizure_candidate_v0", "fall_then_still_v0"}
-    # Seizure: convulsion_v2_real, graph 07c399be, at the 0.8 final_models/seizure/README.md
-    # records. The interim arm conv_finalB (sha8 b9e04d03) is a recorded arm only.
+    # Seizure: convulsion_v2_real, graph 07c399be. The lane page's RECOMMENDED point is 0.8;
+    # the applied point is 0.5, set on 2026-09-09 at the founder's direction for live
+    # demonstration. That is a deviation, so the guard is not "it equals the recommended
+    # number" but the stricter thing POLICY.md rule 10 actually asks for: the applied number
+    # is one the lane page measured, and the file says out loud what it costs.
     assert heads["seizure_candidate_v0"]["run_dir"] == "final_models/seizure"
-    assert heads["seizure_candidate_v0"]["confirm_threshold"] == 0.8
+    assert heads["seizure_candidate_v0"]["confirm_threshold"] == 0.5
+    # Comments wrap, so compare against the prose with the wrapping taken out rather than
+    # against a line, which would make this guard break on a reflow instead of on a change.
+    prose = " ".join(
+        line.strip().lstrip("#").strip() for line in REPLAY_CONFIG.read_text(encoding="utf-8").splitlines()
+    )
+    assert "0.5 catches 12 of 13 events with 72.4 percent of quiet footage in alarm" in prose
+    assert "0.8 catches 8 of 13 at 33.2 percent" in prose
+    assert "demonstration setting and not a deployment one" in prose
     # Fall: fall_v3, graph 67954c04, at the 0.95 final_models/fall/README.md records. The
     # interim arm fall_v2pose (sha8 b66c3a0a) is a recorded arm only.
     assert heads["fall_then_still_v0"]["run_dir"] == "final_models/fall"

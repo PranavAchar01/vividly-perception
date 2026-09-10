@@ -51,8 +51,7 @@ from vividly.analysis import (  # noqa: E402
 )
 from vividly.hud import draw_substance, substance_banner  # noqa: E402
 from vividly.models.factory import build_detector, build_pose  # noqa: E402
-from vividly.models.tracker import ByteTrack  # noqa: E402
-from vividly.sources import LiveRTSPSource  # noqa: E402
+from vividly.models.tracker import BoTSORT  # noqa: E402
 
 
 @dataclass
@@ -106,7 +105,6 @@ def _severity(v: TrackView) -> int:
 
 def _track_style(v: TrackView) -> tuple[tuple[int, int, int], str]:
     """(box color, short tag) for a tracked person given their state."""
-    s = _severity(v)
     if v.fall.state == "fall":
         return _RED, "FALL"
     if v.seizure.state == "seizure":
@@ -199,6 +197,13 @@ def _fit_scale(text: str, target_w: int, base: float, thick: int) -> float:
     return base if tw <= target_w else base * target_w / tw
 
 
+def _is_confirmed(sz, fl) -> bool:
+    """Is this track in a state a viewer must keep seeing? Only the two CONFIRMED states
+    count. `candidate` and `falling` are events still building, and the appliance's rule is
+    that the screen stays quiet until something is certain."""
+    return (sz is not None and sz.state == "seizure") or (fl is not None and fl.state == "fall")
+
+
 def draw_banner(img: np.ndarray, tracks: list[TrackView], extra: str | None = None) -> None:
     """One aggregate top alert for the whole scene: whichever tracked person is in the most
     urgent state wins. Silent when everyone is idle; red alarm + border once a seizure or
@@ -278,6 +283,7 @@ class Shared:
         self.raw_seq = 0
         self._lock = threading.Lock()
         self._tracks: list = []  # latest per-person TrackViews for the compositor
+        self._alerts: list = []  # CONFIRMED events with no pose this frame: banner only
         self.infer_fps = 0.0
         # published jpeg for clients
         self._cond = threading.Condition()
@@ -329,14 +335,21 @@ class Shared:
         with self._det_lock:
             return self._tracked, self._tracked_seq, self._tracked_t
 
-    def put_frame(self, tracks: list, infer_fps: float) -> None:
+    def put_frame(self, tracks: list, infer_fps: float, alerts: list | None = None) -> None:
         with self._lock:
             self._tracks = tracks
+            self._alerts = alerts or []
             self.infer_fps = infer_fps
 
     def get_frame(self) -> tuple[list, float]:
         with self._lock:
             return self._tracks, self.infer_fps
+
+    def get_alerts(self) -> list:
+        """CONFIRMED events whose track was not posed on this frame. The banner needs them;
+        draw_tracks must never see them, because there are no fresh keypoints behind them."""
+        with self._lock:
+            return self._alerts
 
     def publish(self, jpeg: bytes) -> None:
         with self._cond:
@@ -537,7 +550,21 @@ def detect_loop(shared: Shared, cfg_path: str, score: float, det_hz: float) -> N
     # frame_rate stays at the value the tracker was tuned with: its lost-track window is
     # counted in 30 fps frames whatever this says, and changing it would change which
     # tracks survive a gap, which is not a latency question.
-    tracker = ByteTrack(frame_rate=15.0)
+    # BoT-SORT, not ByteTrack. Recorded footage of a real collapse (takes/20260909-203345,
+    # 95.5 s) showed the cost of the old choice: the detector goes blind for 1.65 s while a
+    # person lies prone on the floor, ByteTrack mints a NEW id when they reappear, and the fall
+    # latch is stranded on a track the compositor no longer draws. The alert never reached a
+    # viewer. BoT-SORT with a long lost-track memory keeps the identity across that gap. It
+    # is also this repository's own shipped tracker for the same reason (the 2026-08-31
+    # review in research/v2-training-stack.md section 7a; configs/pipeline/replay_demo.yaml).
+    # Measured cost on this machine: 0.159 ms per update against ByteTrack's 0.114, and it
+    # runs at --det-hz, so the latency budget does not notice it.
+    tracker = BoTSORT(
+        track_activation_threshold=0.25,
+        lost_track_buffer=1800,  # counted in 30 fps frames, so 60 s of identity memory
+        velocity_damping=0.01,  # OC-SORT's stationary fix: a motionless person does not drift
+        frame_rate=15,
+    )
     rate = Rate()
     last_seq = -1
     frame_idx = 0
@@ -631,6 +658,9 @@ def infer_loop(
                         FallAnalyzer(fall_cfg) if fall else None,
                         now,
                         False,  # had an active (non-idle) event last frame
+                        None,  # last SeizureState seen on a posed frame
+                        None,  # last FallState seen on a posed frame
+                        None,  # last box, so an absent alarm still has somewhere to point
                     ]
                     per_track[tid] = ent
                 kp, sc = poses.keypoints[k], poses.scores[k]
@@ -653,27 +683,41 @@ def infer_loop(
                 fl = ent[1].update(kp, sc, box, now) if ent[1] else FallState()
                 ent[2] = now
                 ent[3] = sz.state != "idle" or fl.state != "idle"
+                ent[4], ent[5], ent[6] = sz, fl, box
                 views.append(TrackView(tid, box, kp, sc, sz, fl))
 
         # A track PRESENT but not posed this frame (deprioritized by the cap) stays alive and
         # is NOT decayed — only tracks the tracker itself dropped are absent. on_absent HOLDS a
         # latched fall through a brief absence; a long-gone track is pruned.
+        alerts: list[TrackView] = []
         for tid in list(per_track):
             if tid in seen:
                 continue
             ent = per_track[tid]
             if tid in all_tids:
                 ent[2] = now  # present but pose-capped -> keep, do not decay or prune
+                if _is_confirmed(ent[4], ent[5]) and ent[6] is not None:
+                    alerts.append(TrackView(tid, ent[6], None, None, ent[4], ent[5]))
                 continue
-            if ent[0]:
-                ent[0].on_absent(now)
-            if ent[1]:
-                ent[1].on_absent(now)
-            if now - ent[2] > _PRUNE_S:
+            sz_a = ent[0].on_absent(now) if ent[0] else None
+            fl_a = ent[1].on_absent(now) if ent[1] else None
+            pruned = now - ent[2] > _PRUNE_S
+            # A confirmed alarm must not blink off because the detector missed a frame. For a
+            # person lying motionless on the floor it misses most of them, so without this the
+            # one alert that matters most is the one that flickers.
+            if not pruned and _is_confirmed(sz_a, fl_a) and ent[6] is not None:
+                # Both slots must be real states: draw_banner's _severity reads
+                # .state on each, and an analyzer turned off by a flag returns None.
+                alerts.append(
+                    TrackView(
+                        tid, ent[6], None, None, sz_a or SeizureState(), fl_a or FallState()
+                    )
+                )
+            if pruned:
                 del per_track[tid]
 
         shared.pose_fps = rate.tick()
-        shared.put_frame(views, shared.pose_fps)
+        shared.put_frame(views, shared.pose_fps, alerts)
         shared.infer_seq += 1
 
 
@@ -730,12 +774,13 @@ def composite_loop(
         last_seq = seq
         t0 = time.perf_counter()
         tracks, _ = shared.get_frame()
+        alerts = shared.get_alerts()
         canvas = raw.copy()
         sub = shared.substance
         if hud != "clean":
             draw_tracks(canvas, tracks, kp_thr)
             draw_substance(canvas, sub, time.time())
-            draw_banner(canvas, tracks, substance_banner(sub))
+            draw_banner(canvas, tracks + alerts, substance_banner(sub))
         disp_fps = rate.tick()
         # Capture to composite, measured on every frame. This is the part of the delay this
         # process owns; the camera's own encode and the network sit in front of it.
