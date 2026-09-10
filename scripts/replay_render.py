@@ -98,6 +98,8 @@ draw_banner = LIVE.draw_banner
 draw_hud = LIVE.draw_hud
 box_from_keypoints = LIVE.box_from_keypoints
 body_confidence = LIVE.body_confidence
+instant_fall = LIVE.instant_fall  # the same relabel the appliance applies, not a copy of it
+merge_alerts = LIVE.merge_alerts
 _PRUNE_S = LIVE._PRUNE_S
 _CONF_ALPHA = LIVE._CONF_ALPHA
 _PERSON_HOLD = LIVE._PERSON_HOLD
@@ -328,6 +330,7 @@ def run(a: argparse.Namespace) -> int:
         "seizure_amp": (a.seizure_amp, 0.09),
         "seizure_hf": (a.seizure_hf, 0.35),
         "fall_hold": (a.fall_hold, 4.0),
+        "fall_instant": (a.fall_instant, False),
         "tracker": (a.tracker, "bytetrack"),
         "alarm_release": (a.alarm_release, 0.0),
     }
@@ -433,7 +436,7 @@ def run(a: argparse.Namespace) -> int:
                         )
                     continue
                 sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
-                fl = ent[1].update(kp, sc, box, now) if ent[1] else FallState()
+                fl = instant_fall(ent[1].update(kp, sc, box, now), a.fall_instant) if ent[1] else FallState()
                 ent[2] = now
                 ent[3] = sz.state != "idle" or fl.state != "idle"
                 ent[4], ent[5], ent[6] = sz, fl, box
@@ -491,7 +494,7 @@ def run(a: argparse.Namespace) -> int:
                     alerts.append(TrackView(tid, ent[6], None, None, ent[4], ent[5]))
                 continue
             sz_a = ent[0].on_absent(now) if ent[0] else None
-            fl_a = ent[1].on_absent(now) if ent[1] else None
+            fl_a = instant_fall(ent[1].on_absent(now), a.fall_instant) if ent[1] else None
             # visible=False: an absent track is not in `views`, so nothing it says is drawn.
             if sz_a is not None:
                 log.seizure(tid, now, sz_a, visible=False)
@@ -559,12 +562,13 @@ def run(a: argparse.Namespace) -> int:
         if out is not None:
             canvas = frame  # nothing else reads the frame after this point
             if a.hud != "clean":
-                draw_tracks(canvas, views, a.kp_thr)
+                shown = merge_alerts(views, alerts)
+                draw_tracks(canvas, shown, a.kp_thr)
                 # `now` and not time.time(): the pool overlay's pulse must animate on the
                 # video's clock or it strobes at whatever rate this process happens to run.
                 draw_substance(canvas, sub, now)
-                draw_banner(canvas, views + alerts, substance_banner(sub))
-                draw_hud(canvas, len(views), fps, fps, fps, 0.0, a.hud)
+                draw_banner(canvas, shown, substance_banner(sub))
+                draw_hud(canvas, len(shown), fps, fps, fps, 0.0, a.hud)
             out.write(canvas)
 
         if trace is not None:
@@ -699,6 +703,12 @@ def main() -> int:
     ap.add_argument("--min-person", dest="min_person", type=float, default=0.06)
     ap.add_argument("--seizure-hold", dest="seizure_hold", type=float, default=5.0)
     ap.add_argument("--fall-hold", dest="fall_hold", type=float, default=4.0)
+    ap.add_argument(
+        "--fall-instant",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="demo: alarm at the moment of collapse instead of after the stillness hold",
+    )
     ap.add_argument("--substance", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument(
         "--substance-exclude-people",

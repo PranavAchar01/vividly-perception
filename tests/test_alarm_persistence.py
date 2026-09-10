@@ -90,8 +90,8 @@ def test_a_disabled_analyzer_does_not_crash_the_banner():
         assert _banner_pixels([v]) > 0
 
 
-def test_alerts_channel_is_separate_from_drawn_tracks():
-    """draw_tracks must never be handed an alert: there are no joints behind it."""
+def test_alerts_channel_is_separate_from_posed_tracks():
+    """The shared state keeps posed tracks and held alarms apart; merge_alerts joins them."""
     shared = ls.Shared()
     posed, latched = _view(tid=1), _view(fl=_FALL, tid=2)
     shared.put_frame([posed], 20.0, [latched])
@@ -110,3 +110,34 @@ def test_put_frame_without_alerts_clears_the_previous_ones():
     assert shared.get_alerts()
     shared.put_frame([], 20.0)
     assert shared.get_alerts() == []
+
+
+def _kp():
+    kp = np.tile(np.array([[200.0, 350.0]], np.float32), (17, 1))
+    kp += np.arange(17, dtype=np.float32)[:, None] * 3.0
+    return kp, np.full(17, 0.9, np.float32)
+
+
+def test_merge_puts_the_alarm_on_the_posed_box_instead_of_a_second_box():
+    kp, sc = _kp()
+    posed = ls.TrackView(3, np.array([100, 300, 300, 430], np.float32), kp, sc, _IDLE_SZ, _IDLE_FL)
+    held = _view(fl=_FALL, tid=3)
+    merged = ls.merge_alerts([posed], [held])
+    assert len(merged) == 1
+    assert merged[0].fall.state == "fall" and merged[0].kp is kp  # red, with its real joints
+
+
+def test_merge_appends_an_alarm_whose_person_was_not_posed():
+    merged = ls.merge_alerts([_view(tid=1)], [_view(fl=_FALL, tid=2)])
+    assert [v.tid for v in merged] == [1, 2]
+
+
+def test_a_held_alarm_draws_its_box_but_never_a_skeleton():
+    """No joints this frame means no skeleton; the box is the last place the person was."""
+    img = np.zeros((720, 1280, 3), np.uint8)
+    ls.draw_tracks(img, [_view(fl=_FALL)], 0.3)
+    red = np.all(img == np.array(ls._RED, np.uint8), axis=2)
+    assert red.any()  # the red bracket and tag were drawn
+    # everything drawn sits on the box outline or its tag, nothing inside the body
+    inner = img[320:410, 130:270]
+    assert not inner.any()

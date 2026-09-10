@@ -28,7 +28,7 @@ import socket
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -132,7 +132,8 @@ def draw_tracks(img: np.ndarray, tracks: list[TrackView], kp_thr: float) -> None
         x1, y1, x2, y2 = v.box.astype(int)
         color, tag = _track_style(v)
         _bracket(img, x1, y1, x2, y2, color, 2)
-        draw_skeleton(img, v.kp, v.kp_sc, kp_thr)
+        if v.kp is not None:  # a latched alarm has a last-known box but no joints this frame
+            draw_skeleton(img, v.kp, v.kp_sc, kp_thr)
         label = f"#{v.tid}" + (f"  {tag}" if tag else "")
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(img, (x1, y1 - th - 8), (x1 + tw + 8, y1), color, -1)
@@ -195,6 +196,44 @@ def _fit_scale(text: str, target_w: int, base: float, thick: int) -> float:
     """Largest font scale (<= base) whose rendered text fits target_w."""
     (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, base, thick)
     return base if tw <= target_w else base * target_w / tw
+
+
+def instant_fall(fl: FallState | None, enabled: bool) -> FallState | None:
+    """Demo mode: alarm the moment the collapse is latched, not after the stillness hold.
+
+    FallAnalyzer reports "falling" from the frame it latches a fast upright-to-horizontal
+    transition with a real drop, which is the moment the person hits the floor. The shipped
+    behaviour then waits `hold_s` of down-and-still before calling it a fall, because a
+    trip-and-recover never stays down. That wait is right for a ward and wrong for a live
+    demo, where the audience watches someone fall and sees nothing happen for four seconds.
+    The collapse detector itself is unchanged: a slow recline or a sit still never latches.
+    The latch still clears when the person stands back up, so this only relabels a latched
+    collapse, and held_s counts from the moment of impact.
+    """
+    if enabled and fl is not None and fl.state == "falling":
+        return replace(fl, state="fall", held_s=fl.down_s)
+    return fl
+
+
+def merge_alerts(tracks: list[TrackView], alerts: list[TrackView]) -> list[TrackView]:
+    """One list for everything the screen draws: posed tracks, plus CONFIRMED alarms whose
+    person was not posed this frame.
+
+    A person lying still on the floor is exactly who the detector keeps missing, and before
+    this the screen showed a red border, no box, and "no one in view" at the same time. An
+    alert keeps its last-known box and is drawn with the box and tag only, never a skeleton:
+    there are no joints behind it this frame and drawing some would be invented. Where the
+    same id is both posed and held (an analyzer that dropped out for a frame), the posed view
+    wins but takes the alarm state, so there is one box, in red, with its real skeleton.
+    """
+    if not alerts:
+        return tracks
+    held = {a.tid: a for a in alerts}
+    out = []
+    for v in tracks:
+        a = held.pop(v.tid, None)
+        out.append(v if a is None else TrackView(v.tid, v.box, v.kp, v.kp_sc, a.seizure, a.fall))
+    return out + list(held.values())
 
 
 def _is_confirmed(sz, fl) -> bool:
@@ -595,6 +634,7 @@ def infer_loop(
     body_conf_min: float = 0.30,
     min_dim_frac: float = 0.06,
     seizure_hold_s: float = 5.0,
+    fall_instant: bool = False,
 ) -> None:
     cfg = yaml.safe_load((REPO / cfg_path).read_text())
     print("building pose (ONNX/CPU)...", flush=True)
@@ -680,7 +720,7 @@ def infer_loop(
                 if good[tid] < _PERSON_HOLD:
                     continue
                 sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
-                fl = ent[1].update(kp, sc, box, now) if ent[1] else FallState()
+                fl = instant_fall(ent[1].update(kp, sc, box, now), fall_instant) if ent[1] else FallState()
                 ent[2] = now
                 ent[3] = sz.state != "idle" or fl.state != "idle"
                 ent[4], ent[5], ent[6] = sz, fl, box
@@ -700,7 +740,7 @@ def infer_loop(
                     alerts.append(TrackView(tid, ent[6], None, None, ent[4], ent[5]))
                 continue
             sz_a = ent[0].on_absent(now) if ent[0] else None
-            fl_a = ent[1].on_absent(now) if ent[1] else None
+            fl_a = instant_fall(ent[1].on_absent(now), fall_instant) if ent[1] else None
             pruned = now - ent[2] > _PRUNE_S
             # A confirmed alarm must not blink off because the detector missed a frame. For a
             # person lying motionless on the floor it misses most of them, so without this the
@@ -773,14 +813,13 @@ def composite_loop(
             continue
         last_seq = seq
         t0 = time.perf_counter()
-        tracks, _ = shared.get_frame()
-        alerts = shared.get_alerts()
+        tracks = merge_alerts(shared.get_frame()[0], shared.get_alerts())
         canvas = raw.copy()
         sub = shared.substance
         if hud != "clean":
             draw_tracks(canvas, tracks, kp_thr)
             draw_substance(canvas, sub, time.time())
-            draw_banner(canvas, tracks + alerts, substance_banner(sub))
+            draw_banner(canvas, tracks, substance_banner(sub))
         disp_fps = rate.tick()
         # Capture to composite, measured on every frame. This is the part of the delay this
         # process owns; the camera's own encode and the network sit in front of it.
@@ -945,6 +984,12 @@ def main() -> int:
         default=True,
         help="run per-person fall detection (default on)",
     )
+    ap.add_argument(
+        "--fall-instant",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="demo: raise the fall alarm at the moment of collapse, skipping the stillness hold",
+    )
     a = ap.parse_args()
     if not a.url:
         print("no stream URL: pass --url or set REOLINK_RTSP_URL", file=sys.stderr)
@@ -957,7 +1002,7 @@ def main() -> int:
         (
             infer_loop,
             (shared, a.config, a.score, a.max_pose, a.seizure, a.fall,
-             a.body_conf, a.min_person, a.seizure_hold),
+             a.body_conf, a.min_person, a.seizure_hold, a.fall_instant),
         ),
         (composite_loop, (shared, a.display_fps, a.kp_thr, a.quality, a.hud)),
     ]
