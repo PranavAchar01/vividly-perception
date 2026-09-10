@@ -347,6 +347,8 @@ def run(a: argparse.Namespace) -> int:
     log = EventLog()
     trace = Path(a.trace).open("w") if a.trace else None  # noqa: SIM115 (closed below)
 
+    matte_dir = Path(a.matte_dir) if a.matte_dir else None
+    key_bgr = np.array(tuple(int(a.key_color[i : i + 2], 16) for i in (4, 2, 0)), np.float32)
     recent: dict = {}  # rescue_tracks' memory
     follow_box: dict = {}  # add_followers: tid -> joints box of the last drawn frame
     det_seen: dict = {}
@@ -646,6 +648,14 @@ def run(a: argparse.Namespace) -> int:
         # --- draw, in the compositor's order ------------------------------------------------
         if out is not None:
             canvas = frame  # nothing else reads the frame after this point
+            if matte_dir is not None:
+                # Green screen (tools/greenscreen_mattes.py): the picture is laid over a flat
+                # key colour here, after every analyzer has seen the real frame and before
+                # any overlay is drawn, so boxes, skeletons and banners stay crisp on top.
+                mp = matte_dir / f"{idx:06d}.png"
+                if mp.exists():
+                    m = cv2.imread(str(mp), cv2.IMREAD_GRAYSCALE).astype(np.float32)[..., None] / 255.0
+                    canvas = (frame.astype(np.float32) * m + key_bgr * (1.0 - m)).astype(np.uint8)
             if a.hud != "clean":
                 shown = dedupe_views(merge_alerts(views, alerts))
                 draw_tracks(canvas, shown, a.kp_thr)
@@ -796,6 +806,8 @@ def main() -> int:
         default=1800,
         help="botsort only: lost-track memory, counted in 30 fps frames (1800 = 60 s)",
     )
+    ap.add_argument("--matte-dir", default="", help="per-frame mattes: green screen (see tools/)")
+    ap.add_argument("--key-color", default="00B140", help="background RGB hex for --matte-dir")
     ap.add_argument(
         "--rescue",
         action=argparse.BooleanOptionalAction,
