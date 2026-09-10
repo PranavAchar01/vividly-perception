@@ -229,7 +229,12 @@ class EventLog:
 
     def seizure(self, tid: int, t: float, st: SeizureState, visible: bool = True) -> None:
         self._note(
-            ("seizure", tid), t, st.state, "seizure", "candidate", st.held_s,
+            ("seizure", tid),
+            t,
+            st.state,
+            "seizure",
+            "candidate",
+            st.held_s,
             {
                 "n_limbs": st.n_limbs,
                 "band_ratio": st.band_ratio,
@@ -243,9 +248,7 @@ class EventLog:
         # No `spread` here: it is a stillness measure where LOW is the evidence, so folding it
         # with max would report the noisiest frame as the peak. It is in the per-frame trace.
         peaks = {"down_s": st.down_s, "drop": st.drop}
-        self._note(
-            ("fall", tid), t, st.state, "fall", "falling", st.down_s, peaks, visible
-        )
+        self._note(("fall", tid), t, st.state, "fall", "falling", st.down_s, peaks, visible)
 
     def person_red(self, t: float, st) -> None:
         """One episode per reported person. The analyzer already carries an episode across
@@ -256,7 +259,12 @@ class EventLog:
                 self._note(key, t, "idle", "confirmed", "candidate", 0.0, {}, False)
         for tid, h in hits.items():
             self._note(
-                ("person_red", tid), t, h.state, "confirmed", "candidate", h.held_s,
+                ("person_red", tid),
+                t,
+                h.state,
+                "confirmed",
+                "candidate",
+                h.held_s,
                 {"area_frac": h.area_frac, "growth_frac_per_s": h.growth_frac_per_s},
                 bool(h.polygons),
             )
@@ -267,7 +275,12 @@ class EventLog:
             self._note(("substance", None), t, "idle", "confirmed", "candidate", 0.0, {}, True)
             return
         self._note(
-            ("substance", None), t, state, "confirmed", "candidate", st.held_s,
+            ("substance", None),
+            t,
+            state,
+            "confirmed",
+            "candidate",
+            st.held_s,
             {
                 "area_frac": st.area_frac,
                 "n_pools": st.n_pools,
@@ -278,6 +291,50 @@ class EventLog:
 
 
 # --- the run -------------------------------------------------------------------------------
+
+
+def _reframe_picture(full, matte, rf, size):
+    """The full-resolution frame and the display-resolution matte, laid into the reframed
+    output. The frame is resized once with INTER_AREA from the source (at zoom 1.8 on a
+    2304-wide take that is one source pixel per output pixel, so nothing is upscaled) and
+    then shifted; the matte is warped by the same display-space transform."""
+    z, tx, ty = rf
+    w, h = size
+    k = z * w / full.shape[1]  # source -> output scale
+    big = cv2.resize(
+        full,
+        (round(full.shape[1] * k), round(full.shape[0] * k)),
+        interpolation=cv2.INTER_AREA if k < 1 else cv2.INTER_CUBIC,
+    )
+    shift = np.float32([[1, 0, tx], [0, 1, ty]])
+    pic = cv2.warpAffine(big, shift, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    mz = np.float32([[z, 0, tx], [0, z, ty]])
+    m = cv2.warpAffine(matte, mz, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    return pic, m
+
+
+def _reframe_view(v, rf):
+    z, tx, ty = rf
+    box = v.box.astype(np.float32) * z + np.float32([tx, ty, tx, ty])
+    kp = None if v.kp is None else v.kp.astype(np.float32) * z + np.float32([tx, ty])
+    return TrackView(v.tid, box, kp, v.kp_sc, v.seizure, v.fall)
+
+
+def _reframe_person_red(pr, rf):
+    if pr is None or not getattr(pr, "hits", ()):
+        return pr
+    z, tx, ty = rf
+    hits = tuple(
+        dataclasses.replace(
+            h,
+            polygons=tuple(
+                np.round(np.asarray(q, np.float32) * z + np.float32([tx, ty])).astype(np.int32)
+                for q in h.polygons
+            ),
+        )
+        for h in pr.hits
+    )
+    return dataclasses.replace(pr, hits=hits)
 
 
 def _writer(path: str, fps: float, size: tuple[int, int]) -> cv2.VideoWriter:
@@ -349,6 +406,24 @@ def run(a: argparse.Namespace) -> int:
 
     matte_dir = Path(a.matte_dir) if a.matte_dir else None
     key_bgr = np.array(tuple(int(a.key_color[i : i + 2], 16) for i in (4, 2, 0)), np.float32)
+    # A light backdrop (a white room rather than the green key) needs two display tweaks the
+    # camera picture never did: the mint idle box is ~1.6:1 against white, so it takes a deeper
+    # green (3.4:1 on white, 5:1 under the dark label ink); and the HUD's 55% ink bar turns
+    # mid-grey over white, so solid ink is laid under it first and it reads as it does live.
+    light_key = float(key_bgr @ np.float32([0.114, 0.587, 0.299])) > 180.0
+    if matte_dir is not None and light_key:
+        LIVE._BOX = (70, 160, 50)
+    reframe = None
+    if a.reframe:
+        if matte_dir is None:
+            raise SystemExit(
+                "--reframe needs --matte-dir: outside the matte is where the frame is re-laid"
+            )
+        rcx, rz = (float(v) for v in a.reframe.split(","))
+        # Display -> output: uniform zoom about the chosen centre column, BOTTOM-anchored. The
+        # people in these takes reach the camera's bottom edge, so a vertically centred crop
+        # would cut them off at a hard line mid-picture; the bottom edge stays the bottom.
+        reframe = (rz, disp_w / 2.0 - rz * rcx, disp_h - rz * disp_h)
     recent: dict = {}  # rescue_tracks' memory
     follow_box: dict = {}  # add_followers: tid -> joints box of the last drawn frame
     det_seen: dict = {}
@@ -395,6 +470,7 @@ def run(a: argparse.Namespace) -> int:
         # THE CLOCK: the frame's own presentation time, in the source video's timebase, so a
         # reported confirm_t is a timestamp someone can seek to in the original file.
         now = idx / fps
+        full = frame if reframe is not None else None
         if abs(scale - 1.0) > 1e-3:
             frame = cv2.resize(frame, (disp_w, disp_h), interpolation=interp)
         h_img, w_img = frame.shape[:2]
@@ -443,9 +519,7 @@ def run(a: argparse.Namespace) -> int:
                 ent = per_track.get(tid)
                 if ent is None:
                     ent = [
-                        SeizureAnalyzer(_seizure_cfg(a))
-                        if a.seizure
-                        else None,
+                        SeizureAnalyzer(_seizure_cfg(a)) if a.seizure else None,
                         FallAnalyzer(fall_cfg) if a.fall else None,
                         now,
                         False,
@@ -486,7 +560,11 @@ def run(a: argparse.Namespace) -> int:
                         )
                     continue
                 follow_box[tid] = live_box[tid]
-                fl = instant_fall(ent[1].update(kp, sc, box, now), a.fall_instant) if ent[1] else FallState()
+                fl = (
+                    instant_fall(ent[1].update(kp, sc, box, now), a.fall_instant)
+                    if ent[1]
+                    else FallState()
+                )
                 if ent[0] and collapse_began(ent[5], fl, ent[4]):
                     ent[0].reset()
                 sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
@@ -581,9 +659,7 @@ def run(a: argparse.Namespace) -> int:
                 # Both slots must be real states: draw_banner's _severity reads
                 # .state on each, and an analyzer turned off by a flag returns None.
                 alerts.append(
-                    TrackView(
-                        tid, ent[6], None, None, sz_a or SeizureState(), fl_a or FallState()
-                    )
+                    TrackView(tid, ent[6], None, None, sz_a or SeizureState(), fl_a or FallState())
                 )
             if pruned:
                 del per_track[tid]
@@ -654,10 +730,22 @@ def run(a: argparse.Namespace) -> int:
                 # any overlay is drawn, so boxes, skeletons and banners stay crisp on top.
                 mp = matte_dir / f"{idx:06d}.png"
                 if mp.exists():
-                    m = cv2.imread(str(mp), cv2.IMREAD_GRAYSCALE).astype(np.float32)[..., None] / 255.0
-                    canvas = (frame.astype(np.float32) * m + key_bgr * (1.0 - m)).astype(np.uint8)
+                    m = cv2.imread(str(mp), cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
+                    # Harden the soft tail: the temporal blend leaves motion ghosts and
+                    # stray streaks at alpha 0.1-0.4 that a flat backdrop shows plainly.
+                    # A smoothstep over 0.25..0.75 removes them and keeps thin chair legs.
+                    m = np.clip((m - 0.25) / 0.5, 0.0, 1.0)
+                    m = m * m * (3.0 - 2.0 * m)
+                    pic = frame
+                    if reframe is not None:
+                        pic, m = _reframe_picture(full, m, reframe, (disp_w, disp_h))
+                    m = m[..., None]
+                    canvas = (pic.astype(np.float32) * m + key_bgr * (1.0 - m)).astype(np.uint8)
             if a.hud != "clean":
                 shown = dedupe_views(merge_alerts(views, alerts))
+                if reframe is not None:
+                    shown = [_reframe_view(v, reframe) for v in shown]
+                    pr = _reframe_person_red(pr, reframe)
                 draw_tracks(canvas, shown, a.kp_thr)
                 # `now` and not time.time(): the pool overlay's pulse must animate on the
                 # video's clock or it strobes at whatever rate this process happens to run.
@@ -665,6 +753,8 @@ def run(a: argparse.Namespace) -> int:
                 draw_person_red(canvas, pr, now)
                 # seizure and fall outrank everything (draw_banner's own rule); red on a person
                 # outranks red on the floor, because it says whose it is.
+                if matte_dir is not None and light_key:
+                    canvas[0:34] = LIVE._INK
                 draw_banner(canvas, shown, person_red_banner(pr) or substance_banner(sub))
                 draw_hud(canvas, len(shown), fps, fps, fps, 0.0, a.hud)
             out.write(canvas)
@@ -785,15 +875,26 @@ def main() -> int:
     ap.add_argument("--out", default="", help="annotated output video (omit to skip rendering)")
     ap.add_argument("--json", default="", help="write the confirmed-event list here")
     ap.add_argument(
-        "--alarm-release", type=float, default=0.0,
+        "--alarm-release",
+        type=float,
+        default=0.0,
         help="seconds a CONFIRMED alarm stays on screen after the analyzer clears (0 = shipped)",
     )
-    ap.add_argument("--seizure-limbs", type=int, default=2, help="limbs jerking at once (shipped 2)")
     ap.add_argument(
-        "--seizure-release", type=float, default=1.5, help="seconds below threshold before the candidate clears (shipped 1.5)"
+        "--seizure-limbs", type=int, default=2, help="limbs jerking at once (shipped 2)"
     )
-    ap.add_argument("--seizure-amp", type=float, default=0.09, help="min limb motion (shipped 0.09)")
-    ap.add_argument("--seizure-hf", type=float, default=0.35, help="min clonic band fraction (shipped 0.35)")
+    ap.add_argument(
+        "--seizure-release",
+        type=float,
+        default=1.5,
+        help="seconds below threshold before the candidate clears (shipped 1.5)",
+    )
+    ap.add_argument(
+        "--seizure-amp", type=float, default=0.09, help="min limb motion (shipped 0.09)"
+    )
+    ap.add_argument(
+        "--seizure-hf", type=float, default=0.35, help="min clonic band fraction (shipped 0.35)"
+    )
     ap.add_argument(
         "--tracker",
         choices=("bytetrack", "botsort"),
@@ -807,6 +908,11 @@ def main() -> int:
         help="botsort only: lost-track memory, counted in 30 fps frames (1800 = 60 s)",
     )
     ap.add_argument("--matte-dir", default="", help="per-frame mattes: green screen (see tools/)")
+    ap.add_argument(
+        "--reframe",
+        default="",
+        help="CX,ZOOM: with --matte-dir, zoom about display column CX, bottom-anchored (a centred subject)",
+    )
     ap.add_argument("--key-color", default="00B140", help="background RGB hex for --matte-dir")
     ap.add_argument(
         "--rescue",
@@ -830,11 +936,16 @@ def main() -> int:
     ap.add_argument("--substance", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--person-red", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument(
-        "--person-red-set", action="append", default=[], metavar="FIELD=VALUE",
+        "--person-red-set",
+        action="append",
+        default=[],
+        metavar="FIELD=VALUE",
         help="override a PersonRedConfig field (repeatable); printed as a demonstration setting",
     )
     ap.add_argument(
-        "--person-red-hold", type=float, default=1.5,
+        "--person-red-hold",
+        type=float,
+        default=1.5,
         help="seconds red on a person must persist before it confirms (shipped 1.5)",
     )
     ap.add_argument(

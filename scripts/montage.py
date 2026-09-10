@@ -30,6 +30,7 @@ import numpy as np
 # screen it films are drawn in one hand.
 _ACCENT = (242, 157, 169)  # lavender
 _SUBTLE = (225, 225, 225)  # the HUD's secondary ink
+_DIP_TO = 0.0  # the dip blinks toward black; --paper blinks toward white
 _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 # Title timing, in seconds. Hold, then fade. No entrance.
@@ -171,6 +172,10 @@ def open_encoder(out: Path, w: int, h: int, fps: float, crf: int) -> subprocess.
         "ffmpeg", "-v", "error", "-y", "-nostdin",
         "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}", "-r", f"{fps}", "-i", "-",
         "-an",
+        # Default swscale rounding stores a flat white as Y=234, Cb=Cr=127, which every
+        # player shows as 252,254,251: a green cast on a white backdrop. Accurate rounding
+        # stores 235/128/128 and decodes to exactly 255 (measured).
+        "-sws_flags", "accurate_rnd+full_chroma_int",
         "-c:v", "libx264", "-preset", "slow", "-crf", str(crf),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(out),
@@ -208,10 +213,16 @@ def build(
                 draw_lower_third(frame, cut.title, cut.subtitle, _title_alpha(i / fps), scrim)
                 if head_dip and i < _DIP_FRAMES // 2:
                     k = (i + 1) / (_DIP_FRAMES // 2 + 1)
-                    frame = (frame.astype(np.float32) * k).astype(np.uint8)
+                    frame = (frame.astype(np.float32) * k + _DIP_TO * (1.0 - k)).astype(np.uint8)
                 elif tail_dip and i >= n - _DIP_FRAMES // 2:
                     k = (n - i) / (_DIP_FRAMES // 2 + 1)
-                    frame = (frame.astype(np.float32) * k).astype(np.uint8)
+                    frame = (frame.astype(np.float32) * k + _DIP_TO * (1.0 - k)).astype(np.uint8)
+                if _DIP_TO == 255.0:
+                    # Every lossy hop drifts a flat white a few levels toward green (measured
+                    # 255 -> 251,254,251 after the renderer's writer -> 247,253,250 after this
+                    # encode). Near-white, near-neutral pixels are the backdrop: snap them back.
+                    lo, hi = frame.min(axis=2), frame.max(axis=2)
+                    frame[(lo >= 236) & (hi.astype(np.int16) - lo <= 12)] = 255
                 enc.stdin.write(frame.tobytes())
                 total += 1
                 last = frame
@@ -251,12 +262,22 @@ def main() -> int:
     ap.add_argument(
         "--scrim", type=float, default=0.55, help="0..1 darkening under the lower third"
     )
+    ap.add_argument(
+        "--paper",
+        action="store_true",
+        help="segments on a white backdrop: titles in deep indigo (6.8:1 on white, where the "
+        "lavender is 2.4:1), no scrim, and the dip blinks to white instead of black",
+    )
     ap.add_argument("--crf", type=int, default=18, help="x264 quality (lower is better)")
     ap.add_argument("--max-seconds", type=float, default=None, help="warn if the film runs longer")
     a = ap.parse_args()
 
     if shutil.which("ffmpeg") is None:
         raise SystemExit("ffmpeg is not on PATH")
+    if a.paper:
+        global _ACCENT, _SUBTLE, _DIP_TO
+        _ACCENT, _SUBTLE, _DIP_TO = (190, 72, 88), (110, 110, 110), 255.0
+        a.scrim = 0.0
     if not 0.0 <= a.scrim <= 1.0:
         raise SystemExit("--scrim must be between 0 and 1")
 
