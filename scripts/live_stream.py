@@ -215,6 +215,43 @@ def instant_fall(fl: FallState | None, enabled: bool) -> FallState | None:
     return fl
 
 
+def _overlap(a: np.ndarray, b: np.ndarray) -> float:
+    """Intersection over the SMALLER box: 1.0 when one box sits inside the other."""
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    small = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+    return float(inter / small) if small > 0 else 0.0
+
+
+_TWIN_OVERLAP = 0.7
+
+
+def dedupe_views(views: list[TrackView]) -> list[TrackView]:
+    """One box per person on screen.
+
+    The tracker occasionally runs two ids on one person for a second or two, typically as
+    they move fast (a hand to the head, a slump), and the screen then showed two boxes on
+    one body and "2 people". Boxes that overlap by at least _TWIN_OVERLAP of the smaller one
+    are one person: the larger box is kept (it is the whole body), with its own skeleton,
+    and it takes the most urgent alarm state of the pair so a duplicate can never hide an
+    alarm. Display only; each id's analyzers keep running on their own.
+    """
+    if len(views) < 2:
+        return views
+    order = sorted(views, key=lambda v: -float((v.box[2] - v.box[0]) * (v.box[3] - v.box[1])))
+    kept: list[TrackView] = []
+    for v in order:
+        twin = next((i for i, k in enumerate(kept) if _overlap(k.box, v.box) >= _TWIN_OVERLAP), None)
+        if twin is None:
+            kept.append(v)
+            continue
+        k = kept[twin]
+        if _severity(v) > _severity(k):
+            kept[twin] = TrackView(k.tid, k.box, k.kp, k.kp_sc, v.seizure, v.fall)
+    return kept
+
+
 def merge_alerts(tracks: list[TrackView], alerts: list[TrackView]) -> list[TrackView]:
     """One list for everything the screen draws: posed tracks, plus CONFIRMED alarms whose
     person was not posed this frame.
@@ -813,7 +850,7 @@ def composite_loop(
             continue
         last_seq = seq
         t0 = time.perf_counter()
-        tracks = merge_alerts(shared.get_frame()[0], shared.get_alerts())
+        tracks = dedupe_views(merge_alerts(shared.get_frame()[0], shared.get_alerts()))
         canvas = raw.copy()
         sub = shared.substance
         if hud != "clean":

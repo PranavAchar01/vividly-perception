@@ -107,6 +107,7 @@ box_from_keypoints = LIVE.box_from_keypoints
 body_confidence = LIVE.body_confidence
 instant_fall = LIVE.instant_fall  # the same relabel the appliance applies, not a copy of it
 merge_alerts = LIVE.merge_alerts
+dedupe_views = LIVE.dedupe_views
 _PRUNE_S = LIVE._PRUNE_S
 _CONF_ALPHA = LIVE._CONF_ALPHA
 _PERSON_HOLD = LIVE._PERSON_HOLD
@@ -334,6 +335,7 @@ def run(a: argparse.Namespace) -> int:
     fall_cfg = FallConfig(hold_s=float(a.fall_hold))
     substance = SubstanceAnalyzer(SubstanceConfig()) if a.substance else None
     person_red = PersonRedAnalyzer(_person_red_cfg(a)) if a.person_red else None
+    last_pr = None  # (t, state) of the last frame with a confirmed red-on-person hit
 
     out = _writer(a.out, fps, (disp_w, disp_h)) if a.out else None
     log = EventLog()
@@ -358,6 +360,8 @@ def run(a: argparse.Namespace) -> int:
         "alarm_release": (a.alarm_release, 0.0),
     }
     moved = {k: v for k, (v, d) in shipped.items() if v != d}
+    if a.person_red_set:
+        moved["person_red"] = ",".join(a.person_red_set)
     if moved:
         print(
             "DEMONSTRATION SETTINGS, not the shipped detector: "
@@ -581,6 +585,14 @@ def run(a: argparse.Namespace) -> int:
         if person_red is not None:
             pr = person_red.update(frame, now, [(v.tid, v.box, v.kp, v.kp_sc) for v in views])
             log.person_red(now, pr)
+            # The same de-escalation timer the seizure and fall alarms get: a confirmed red
+            # alarm stays on screen for --alarm-release after the analyzer last confirmed it,
+            # so a tracker hand-over or a second of shadow does not blink it off. Display
+            # only; the event log above records exactly what the analyzer said.
+            if any(h.state == "confirmed" for h in pr.hits):
+                last_pr = (now, pr)
+            elif last_pr is not None and now - last_pr[0] <= a.alarm_release:
+                pr = last_pr[1]
 
         # --- substance ---------------------------------------------------------------------
         sub = None
@@ -593,7 +605,7 @@ def run(a: argparse.Namespace) -> int:
         if out is not None:
             canvas = frame  # nothing else reads the frame after this point
             if a.hud != "clean":
-                shown = merge_alerts(views, alerts)
+                shown = dedupe_views(merge_alerts(views, alerts))
                 draw_tracks(canvas, shown, a.kp_thr)
                 # `now` and not time.time(): the pool overlay's pulse must animate on the
                 # video's clock or it strobes at whatever rate this process happens to run.
@@ -695,8 +707,15 @@ def _seizure_cfg(a) -> SeizureConfig:
 
 
 def _person_red_cfg(a) -> PersonRedConfig:
-    """Shipped PersonRedConfig with only the hold exposed; moved values print in the header."""
-    return PersonRedConfig(min_hold_s=a.person_red_hold)
+    """Shipped PersonRedConfig plus any --person-red-set FIELD=VALUE overrides, which print
+    in the DEMONSTRATION SETTINGS header like every other moved value."""
+    kw = {"min_hold_s": a.person_red_hold}
+    for kv in a.person_red_set:
+        k, _, v = kv.partition("=")
+        if k not in PersonRedConfig.__dataclass_fields__:
+            raise SystemExit(f"--person-red-set: PersonRedConfig has no field {k!r}")
+        kw[k] = type(getattr(PersonRedConfig(), k))(float(v))
+    return PersonRedConfig(**kw)
 
 
 def _confirmed(sz, fl) -> bool:
@@ -750,6 +769,10 @@ def main() -> int:
     )
     ap.add_argument("--substance", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--person-red", action=argparse.BooleanOptionalAction, default=True)
+    ap.add_argument(
+        "--person-red-set", action="append", default=[], metavar="FIELD=VALUE",
+        help="override a PersonRedConfig field (repeatable); printed as a demonstration setting",
+    )
     ap.add_argument(
         "--person-red-hold", type=float, default=1.5,
         help="seconds red on a person must persist before it confirms (shipped 1.5)",

@@ -141,3 +141,23 @@ def test_a_held_alarm_draws_its_box_but_never_a_skeleton():
     # everything drawn sits on the box outline or its tag, nothing inside the body
     inner = img[320:410, 130:270]
     assert not inner.any()
+
+
+def test_twin_boxes_on_one_person_draw_as_one():
+    body = ls.TrackView(1, np.array([100, 100, 300, 500], np.float32), None, None, _IDLE_SZ, _IDLE_FL)
+    head = ls.TrackView(0, np.array([150, 100, 260, 300], np.float32), None, None, _IDLE_SZ, _IDLE_FL)
+    out = ls.dedupe_views([head, body])
+    assert [v.tid for v in out] == [1]  # the whole-body box survives
+
+
+def test_a_twin_never_hides_an_alarm():
+    body = ls.TrackView(1, np.array([100, 100, 300, 500], np.float32), None, None, _IDLE_SZ, _IDLE_FL)
+    head = ls.TrackView(0, np.array([150, 100, 260, 300], np.float32), None, None, _IDLE_SZ, _FALL)
+    out = ls.dedupe_views([body, head])
+    assert len(out) == 1 and out[0].fall.state == "fall"
+
+
+def test_two_real_people_stay_two():
+    a = ls.TrackView(1, np.array([100, 100, 300, 500], np.float32), None, None, _IDLE_SZ, _IDLE_FL)
+    b = ls.TrackView(2, np.array([280, 100, 480, 500], np.float32), None, None, _IDLE_SZ, _IDLE_FL)
+    assert len(ls.dedupe_views([a, b])) == 2
