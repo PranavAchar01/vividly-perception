@@ -62,13 +62,20 @@ from vividly.analysis import (  # noqa: E402
     FallAnalyzer,
     FallConfig,
     FallState,
+    PersonRedAnalyzer,
+    PersonRedConfig,
     SeizureAnalyzer,
     SeizureConfig,
     SeizureState,
     SubstanceAnalyzer,
     SubstanceConfig,
 )
-from vividly.hud import draw_substance, substance_banner  # noqa: E402
+from vividly.hud import (  # noqa: E402
+    draw_person_red,
+    draw_substance,
+    person_red_banner,
+    substance_banner,
+)
 from vividly.models.factory import build_detector, build_pose  # noqa: E402
 from vividly.models.tracker import BoTSORT, ByteTrack  # noqa: E402
 
@@ -234,6 +241,20 @@ class EventLog:
             ("fall", tid), t, st.state, "fall", "falling", st.down_s, peaks, visible
         )
 
+    def person_red(self, t: float, st) -> None:
+        """One episode per reported person. The analyzer already carries an episode across
+        a tracker id hand-over and reports it under one id, so keying by tid is enough."""
+        hits = {h.tid: h for h in (st.hits if st is not None else ())}
+        for key in [k for k in (*self._open, *self._pending) if k[0] == "person_red"]:
+            if key[1] not in hits:
+                self._note(key, t, "idle", "confirmed", "candidate", 0.0, {}, False)
+        for tid, h in hits.items():
+            self._note(
+                ("person_red", tid), t, h.state, "confirmed", "candidate", h.held_s,
+                {"area_frac": h.area_frac, "growth_frac_per_s": h.growth_frac_per_s},
+                bool(h.polygons),
+            )
+
     def substance(self, t: float, st) -> None:
         state = getattr(st, "state", "idle") if st is not None else "idle"
         if state == "idle" or st is None:
@@ -312,6 +333,7 @@ def run(a: argparse.Namespace) -> int:
 
     fall_cfg = FallConfig(hold_s=float(a.fall_hold))
     substance = SubstanceAnalyzer(SubstanceConfig()) if a.substance else None
+    person_red = PersonRedAnalyzer(_person_red_cfg(a)) if a.person_red else None
 
     out = _writer(a.out, fps, (disp_w, disp_h)) if a.out else None
     log = EventLog()
@@ -331,6 +353,7 @@ def run(a: argparse.Namespace) -> int:
         "seizure_hf": (a.seizure_hf, 0.35),
         "fall_hold": (a.fall_hold, 4.0),
         "fall_instant": (a.fall_instant, False),
+        "person_red_hold": (a.person_red_hold, 1.5),
         "tracker": (a.tracker, "bytetrack"),
         "alarm_release": (a.alarm_release, 0.0),
     }
@@ -534,6 +557,8 @@ def run(a: argparse.Namespace) -> int:
                 )
             if pruned:
                 del per_track[tid]
+                if person_red is not None:
+                    person_red.forget(tid)
 
         # An alarm should de-escalate on a timer, not on a single frame. Without this a
         # 2-frame dropout in the analyzer (the person settles, `move_max` is exceeded for one
@@ -551,6 +576,12 @@ def run(a: argparse.Namespace) -> int:
                 elif tid not in live_conf:
                     alerts.append(TrackView(tid, box_c, None, None, sz_c, fl_c))
 
+        # --- red on a person: same frame the keypoints came from -----------------------------
+        pr = None
+        if person_red is not None:
+            pr = person_red.update(frame, now, [(v.tid, v.box, v.kp, v.kp_sc) for v in views])
+            log.person_red(now, pr)
+
         # --- substance ---------------------------------------------------------------------
         sub = None
         if substance is not None:
@@ -567,7 +598,10 @@ def run(a: argparse.Namespace) -> int:
                 # `now` and not time.time(): the pool overlay's pulse must animate on the
                 # video's clock or it strobes at whatever rate this process happens to run.
                 draw_substance(canvas, sub, now)
-                draw_banner(canvas, shown, substance_banner(sub))
+                draw_person_red(canvas, pr, now)
+                # seizure and fall outrank everything (draw_banner's own rule); red on a person
+                # outranks red on the floor, because it says whose it is.
+                draw_banner(canvas, shown, person_red_banner(pr) or substance_banner(sub))
                 draw_hud(canvas, len(shown), fps, fps, fps, 0.0, a.hud)
             out.write(canvas)
 
@@ -660,6 +694,11 @@ def _seizure_cfg(a) -> SeizureConfig:
     )
 
 
+def _person_red_cfg(a) -> PersonRedConfig:
+    """Shipped PersonRedConfig with only the hold exposed; moved values print in the header."""
+    return PersonRedConfig(min_hold_s=a.person_red_hold)
+
+
 def _confirmed(sz, fl) -> bool:
     """Is this track in a state a viewer must keep seeing? Only the two CONFIRMED states
     count. A `candidate` or `falling` track is an event still building, and the appliance's
@@ -710,6 +749,11 @@ def main() -> int:
         help="demo: alarm at the moment of collapse instead of after the stillness hold",
     )
     ap.add_argument("--substance", action=argparse.BooleanOptionalAction, default=True)
+    ap.add_argument("--person-red", action=argparse.BooleanOptionalAction, default=True)
+    ap.add_argument(
+        "--person-red-hold", type=float, default=1.5,
+        help="seconds red on a person must persist before it confirms (shipped 1.5)",
+    )
     ap.add_argument(
         "--substance-exclude-people",
         action=argparse.BooleanOptionalAction,
