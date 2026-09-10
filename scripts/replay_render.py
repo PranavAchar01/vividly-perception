@@ -106,6 +106,7 @@ draw_banner = LIVE.draw_banner
 draw_hud = LIVE.draw_hud
 box_from_keypoints = LIVE.box_from_keypoints
 body_confidence = LIVE.body_confidence
+collapse_began = LIVE.collapse_began
 instant_fall = LIVE.instant_fall  # the same relabel the appliance applies, not a copy of it
 merge_alerts = LIVE.merge_alerts
 rescue_tracks = LIVE.rescue_tracks
@@ -401,7 +402,8 @@ def run(a: argparse.Namespace) -> int:
         tracked = tracker.update(d_all.filter(a.score), idx)
         # The appliance's rescue: a person on screen a moment ago and missing now is
         # continued on a low-score box where they were (live_stream.rescue_tracks).
-        tracked = rescue_tracks(tracked, d_all, recent, now, a.score)
+        if a.rescue:
+            tracked = rescue_tracks(tracked, d_all, recent, now, a.score)
         # A fresh detection is authoritative on every frame here, so no box is ever carried
         # forward; box_from_keypoints still runs because the appliance's next-frame crop is
         # part of the pose path it feeds.
@@ -409,7 +411,8 @@ def run(a: argparse.Namespace) -> int:
             int(tracked.track_ids[i]): tracked.xyxy[i].astype(np.float32)
             for i in range(len(tracked))
         }
-        tracked = add_followers(tracked, follow_box, det_seen, now)
+        if a.rescue:
+            tracked = add_followers(tracked, follow_box, det_seen, now)
         all_tids = {int(t) for t in tracked.track_ids} if len(tracked) else set()
 
         # --- pose, capped and prioritized exactly as the appliance does ---------------------
@@ -465,6 +468,11 @@ def run(a: argparse.Namespace) -> int:
                     good[tid] = 0
                 if good[tid] < _PERSON_HOLD:
                     follow_box.pop(tid, None)
+                    # Not a body THIS frame is not "handled": leave it to the present-but-
+                    # not-posed branch below, which holds a confirmed alarm at the last box.
+                    # Marked seen, a confirmed fall whose pose confidence dipped for a moment
+                    # vanished from the screen, banner and all (live run of take1, ~98 s).
+                    seen.discard(tid)
                     if trace is not None:
                         rows.append(
                             {
@@ -476,8 +484,10 @@ def run(a: argparse.Namespace) -> int:
                         )
                     continue
                 follow_box[tid] = live_box[tid]
-                sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 fl = instant_fall(ent[1].update(kp, sc, box, now), a.fall_instant) if ent[1] else FallState()
+                if ent[0] and collapse_began(ent[5], fl, ent[4]):
+                    ent[0].reset()
+                sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 ent[2] = now
                 ent[3] = sz.state != "idle" or fl.state != "idle"
                 ent[4], ent[5], ent[6] = sz, fl, box
@@ -785,6 +795,12 @@ def main() -> int:
         type=int,
         default=1800,
         help="botsort only: lost-track memory, counted in 30 fps frames (1800 = 60 s)",
+    )
+    ap.add_argument(
+        "--rescue",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="the appliance's rescue_tracks + add_followers (on, as live); --no-rescue for A/B",
     )
     ap.add_argument("--trace", default="", help="optional per-frame analyzer JSONL, for diagnosis")
     ap.add_argument("--config", default="configs/eval/live_final.yaml")

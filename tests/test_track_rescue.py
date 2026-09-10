@@ -109,3 +109,18 @@ def test_a_track_refound_under_a_new_id_is_not_kept_alive() -> None:
     follow = {1: np.array(PRONE, np.float32)}
     out = ls.add_followers(dets([PRONE], [0.8], [2]), follow, {1: 0.0}, 0.1)
     assert list(out.track_ids) == [2] and 1 not in follow
+
+
+def test_a_collapse_restarts_the_seizure_clock_unless_a_seizure_is_confirmed() -> None:
+    # take1: a candidate from seated shifting at 90.4 s was carried over the 5 s hold by the
+    # collapse at 95.5 s and confirmed SEIZURE on a person who fell and never convulsed.
+    from vividly.analysis.fall import FallState
+    from vividly.analysis.seizure import SeizureState
+
+    idle, falling = FallState(), FallState(state="falling")
+    candidate, seizure = SeizureState(state="candidate"), SeizureState(state="seizure")
+    assert ls.collapse_began(idle, falling, candidate)  # the frame the collapse latches
+    assert ls.collapse_began(None, falling, None)
+    assert not ls.collapse_began(falling, falling, candidate)  # only on the transition
+    assert not ls.collapse_began(idle, idle, candidate)
+    assert not ls.collapse_began(idle, falling, seizure)  # a seizure that causes a fall stays

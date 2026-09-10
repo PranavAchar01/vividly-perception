@@ -216,6 +216,27 @@ def _fit_scale(text: str, target_w: int, base: float, thick: int) -> float:
     return base if tw <= target_w else base * target_w / tw
 
 
+def collapse_began(prev_fl, fl, prev_sz) -> bool:
+    """True on the frame a person's fall analyzer latches a new collapse, unless a seizure
+    is already confirmed for them. The caller restarts that person's seizure clock.
+
+    A collapse is one large whole-body displacement, and inside the seizure analyzer's
+    4 s window it reads as movement energy on every limb at once. Measured on
+    takes/20260909-203345: a candidate that began on seated shifting at 90.4 s was carried
+    over the 5 s hold by the collapse at 95.5 s and confirmed SEIZURE at 95.7 s on a person
+    who fell and never convulsed. It had always been 1.1 s short; the detector's blind
+    spell at 95.2 s used to reset it, and keeping hold of the patient through that spell
+    (rescue_tracks) took the accidental reset away. A real convulsion on the floor still
+    confirms: it gets a fresh clock from the landing and has to hold for itself. A seizure
+    already confirmed when the person goes down (a seizure that causes the fall) is kept.
+    """
+    if fl is None or fl.state == "idle":
+        return False
+    if prev_fl is not None and prev_fl.state != "idle":
+        return False
+    return prev_sz is None or prev_sz.state != "seizure"
+
+
 def instant_fall(fl: FallState | None, enabled: bool) -> FallState | None:
     """Demo mode: alarm the moment the collapse is latched, not after the stillness hold.
 
@@ -912,10 +933,17 @@ def infer_loop(
                     good[tid] = 0
                 if good[tid] < _PERSON_HOLD:
                     follow_box.pop(tid, None)
+                    # Not a body THIS frame is not "handled": leave it to the present-but-
+                    # not-posed branch below, which holds a confirmed alarm at the last box.
+                    # Marked seen, a confirmed fall whose pose confidence dipped for a moment
+                    # vanished from the screen, banner and all (live run of take1, ~98 s).
+                    seen.discard(tid)
                     continue
                 follow_box[tid] = live_box[tid]
-                sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 fl = instant_fall(ent[1].update(kp, sc, box, now), fall_instant) if ent[1] else FallState()
+                if ent[0] and collapse_began(ent[5], fl, ent[4]):
+                    ent[0].reset()
+                sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 ent[2] = now
                 ent[3] = sz.state != "idle" or fl.state != "idle"
                 ent[4], ent[5], ent[6] = sz, fl, box
