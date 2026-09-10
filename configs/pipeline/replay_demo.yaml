@@ -138,8 +138,12 @@ verify:
       # final_models/seizure/README.md: 0.5 catches 12 of 13 events with 72.4 percent of
       # quiet footage in alarm; 0.8 catches 8 of 13 at 33.2 percent; 0.9 leaves 8.1
       # percent in alarm.
+      # Set to 0.5 on 2026-09-09 at the founder's direction, for live demonstration: the
+      # lane page's own numbers above say 0.5 catches 12 of the 13 events and 0.8 catches
+      # 8. The cost is on the same page and is not small, 72.4 percent of quiet footage in
+      # alarm against 33.2, which is a demonstration setting and not a deployment one.
       run_dir: final_models/seizure
-      confirm_threshold: 0.8
+      confirm_threshold: 0.5
     fall_then_still_v0:
       # fall_v3, checkpoint 3d2d17ee, graph 67954c04, temperature 1.0251.
       # final_models/fall/README.md: at 0.95 the head keeps 111 of 200 all-camera catches

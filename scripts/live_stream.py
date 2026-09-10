@@ -44,6 +44,7 @@ from vividly.analysis import (  # noqa: E402
     FallConfig,
     FallState,
     SeizureAnalyzer,
+    SeizureConfig,
     SeizureState,
 )
 from vividly.models.factory import build_detector, build_pose  # noqa: E402
@@ -107,11 +108,10 @@ def _track_style(v: TrackView) -> tuple[tuple[int, int, int], str]:
         return _RED, "FALL"
     if v.seizure.state == "seizure":
         return _RED, f"SEIZURE {v.seizure.dominant_hz:.0f}Hz"
-    if v.fall.state == "falling":
-        return _AMBER, "falling"
-    if v.seizure.state == "candidate":
-        return _AMBER, "analyzing"
-    return (_BOX, "") if s == 0 else (_AMBER, "")
+    # Nothing amber. A building state used to tint the box and print "analyzing", which on
+    # film reads as the system hedging, and it painted clutter yellow for a second at a
+    # time. The box stays neutral until an event confirms, and then it is unmistakable.
+    return _BOX, ""
 
 
 def draw_skeleton(img: np.ndarray, kps: np.ndarray, sc: np.ndarray, kp_thr: float) -> None:
@@ -140,7 +140,22 @@ def draw_tracks(img: np.ndarray, tracks: list[TrackView], kp_thr: float) -> None
         )
 
 
-def draw_hud(img: np.ndarray, persons: int, infer_fps: float, disp_fps: float) -> None:
+def draw_hud(
+    img: np.ndarray,
+    persons: int,
+    pose_fps: float,
+    disp_fps: float,
+    det_fps: float = 0.0,
+    lat_ms: float = 0.0,
+    mode: str = "demo",
+) -> None:
+    """Two overlays from one function.
+
+    `demo` is what a camera pointed at this screen should see: the wordmark, how many people
+    are in view, and the time. Frame rates and millisecond counters are engineering
+    instruments, and on film they read as a system talking about itself rather than about
+    the room. `debug` puts them back for the person tuning it.
+    """
     w = img.shape[1]
     bar = img[0:34, 0:w]
     cv2.addWeighted(np.full_like(bar, _INK), 0.55, bar, 0.45, 0, bar)
@@ -154,7 +169,14 @@ def draw_hud(img: np.ndarray, persons: int, infer_fps: float, disp_fps: float) -
         2,
         cv2.LINE_AA,
     )
-    right = f"{persons} person(s)   infer {infer_fps:4.1f} fps   video {disp_fps:4.1f} fps"
+    people = "no one in view" if persons == 0 else ("1 person" if persons == 1 else f"{persons} people")
+    if mode == "debug":
+        right = (
+            f"{people}   pose {pose_fps:4.1f}   det {det_fps:4.1f}   "
+            f"video {disp_fps:4.1f} fps   delay {lat_ms:3.0f} ms"
+        )
+    else:
+        right = f"{people}     {time.strftime('%H:%M:%S')}"
     (tw, _), _ = cv2.getTextSize(right, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)
     cv2.putText(
         img,
@@ -182,7 +204,7 @@ def draw_banner(img: np.ndarray, tracks: list[TrackView]) -> None:
         return
     worst = max(tracks, key=_severity)
     sev = _severity(worst)
-    if sev == 0:
+    if sev < 4:  # idle, or an event still building: the screen stays quiet
         return
     w = img.shape[1]
     if sev >= 4:  # a CONFIRMED emergency
@@ -209,15 +231,7 @@ def draw_banner(img: np.ndarray, tracks: list[TrackView]) -> None:
             2,
             cv2.LINE_AA,
         )
-    else:  # building: a candidate seizure or a fall in progress
-        msg = (
-            f"ANALYZING person #{worst.tid} — falling"
-            if worst.fall.state == "falling"
-            else f"ANALYZING person #{worst.tid} — {worst.seizure.n_limbs} limbs @ "
-            f"{worst.seizure.dominant_hz:.1f} Hz"
-        )
-        fs = _fit_scale(msg, w - 24, 0.6, 2)
-        cv2.putText(img, msg, (12, 56), cv2.FONT_HERSHEY_SIMPLEX, fs, _AMBER, 2, cv2.LINE_AA)
+    # No banner for a building state: only a confirmed event says anything on screen.
 
 
 class Rate:
@@ -258,22 +272,48 @@ class Shared:
         self._jpeg: bytes | None = None
         self._pub_seq = 0
 
-        self.infer_seq = 0  # frames the infer thread has completed
+        self.infer_seq = 0  # frames the pose thread has completed
 
-    def put_raw(self, frame: np.ndarray) -> None:
+        # Wall time the newest raw frame came off the decoder. Every later stage carries it
+        # so the HUD can state the age of what a viewer is looking at instead of implying
+        # that a high frame rate means a low delay. The two are independent.
+        self.raw_t = 0.0
+        # Detector output, published by the detect thread and read by the pose thread.
+        self._det_lock = threading.Lock()
+        self._tracked = None
+        self._tracked_seq = -1
+        self._tracked_t = 0.0
+        self.det_fps = 0.0
+        self.pose_fps = 0.0
+        self.lat_ms = 0.0        # capture -> composite, measured
+        self.drop_fps = 0.0      # frames dropped by the drain, per second
+
+    def put_raw(self, frame: np.ndarray, t_cap: float) -> None:
         with self._raw_cond:
             self.raw = frame
+            self.raw_t = t_cap
             self.raw_seq += 1
             self._raw_cond.notify_all()
 
-    def get_raw(self) -> tuple[np.ndarray | None, int]:
+    def get_raw(self) -> tuple[np.ndarray | None, int, float]:
         with self._raw_cond:
-            return (None if self.raw is None else self.raw, self.raw_seq)
+            return (None if self.raw is None else self.raw, self.raw_seq, self.raw_t)
 
-    def wait_raw(self, last_seq: int, timeout: float = 5.0) -> tuple[np.ndarray | None, int]:
+    def wait_raw(self, last_seq: int, timeout: float = 5.0) -> tuple[np.ndarray | None, int, float]:
         with self._raw_cond:
             self._raw_cond.wait_for(lambda: self.raw_seq != last_seq, timeout=timeout)
-            return (None if self.raw is None else self.raw, self.raw_seq)
+            return (None if self.raw is None else self.raw, self.raw_seq, self.raw_t)
+
+    def put_tracked(self, tracked, seq: int, t_cap: float, det_fps: float) -> None:
+        with self._det_lock:
+            self._tracked = tracked
+            self._tracked_seq = seq
+            self._tracked_t = t_cap
+            self.det_fps = det_fps
+
+    def get_tracked(self):
+        with self._det_lock:
+            return self._tracked, self._tracked_seq, self._tracked_t
 
     def put_frame(self, tracks: list, infer_fps: float) -> None:
         with self._lock:
@@ -296,34 +336,122 @@ class Shared:
             return self._jpeg, self._pub_seq
 
 
+#: FFmpeg options for a live camera, chosen for delay rather than smoothness. `nobuffer`
+#: and `low_delay` stop the demuxer holding frames back, `reorder_queue_size 0` and
+#: `max_delay 0` remove the RTP jitter buffer, and the small probe means the first frame is
+#: decoded at once instead of after a second of stream analysis. `timeout` is the FFmpeg 9
+#: spelling: `stimeout` was removed years ago and the value set here before was doing
+#: nothing at all.
+_LOW_LATENCY_OPTS = (
+    "rtsp_transport;tcp"
+    "|fflags;nobuffer"
+    "|flags;low_delay"
+    "|reorder_queue_size;0"
+    "|max_delay;0"
+    "|probesize;65536"
+    "|analyzeduration;0"
+    "|timeout;5000000"
+)
+
+
+class LowLatencyCapture:
+    """A camera read that returns the newest decoded frame rather than the oldest queued one.
+
+    Measured on this rig: a fresh connection consumes 13 more frames than the camera
+    produced while it was connected, which is 528 ms of frames the camera had already sent
+    and FFmpeg had queued. Reading at exactly the source rate keeps that queue full for the
+    life of the session, so the viewer sits half a second behind the room forever and no
+    amount of frame rate fixes it. Two things prevent that here: the reader never sleeps, so
+    a queue drains at the difference between decode speed and source rate, and `drain`
+    discards whole frames without converting them whenever a backlog is detected.
+    """
+
+    def __init__(self, url: str, *, fps_fallback: float = 25.0) -> None:
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = _LOW_LATENCY_OPTS
+        self.url = url
+        self.fps_fallback = fps_fallback
+        self.cap: cv2.VideoCapture | None = None
+        self.fps = fps_fallback
+        self.width = 0
+        self.height = 0
+        self.dropped = 0
+
+    def open(self) -> None:
+        cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+        if not cap.isOpened():
+            raise RuntimeError("could not open live stream (check URL, network, credentials)")
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        f = float(cap.get(cv2.CAP_PROP_FPS))
+        self.fps = f if 1.0 < f < 121.0 else self.fps_fallback
+        self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.cap = cap
+        # The camera replays from its last keyframe on connect. Throw that away before the
+        # first frame reaches a viewer, or the session starts a keyframe interval behind.
+        self.flush(0.6)
+
+    def flush(self, seconds: float = 0.5) -> int:
+        """Throw away everything the camera replayed on connect.
+
+        Timing a grab cannot tell a queued frame from a fresh one here: decoding 4K HEVC
+        costs about as long as a frame interval, so every grab looks like a queued one and a
+        per-read drain silently discarded four fifths of the camera's output (measured: the
+        viewer fell to 6 fps). A fixed flush at connect has no such ambiguity, and no drain
+        is needed afterwards: the reader never sleeps, and decoding is faster than the camera
+        produces, so a queue can only shrink.
+        """
+        cap = self.cap
+        if cap is None:
+            return 0
+        end = time.perf_counter() + seconds
+        n = 0
+        while time.perf_counter() < end and cap.grab():
+            n += 1
+        self.dropped += n
+        return n
+
+    def read(self) -> tuple[np.ndarray | None, float, int]:
+        """The newest frame and the wall time it came off the decoder."""
+        cap = self.cap
+        if cap is None:
+            return None, 0.0, 0
+        ok, img = cap.read()
+        return (img if ok else None), time.time(), 0
+
+    def close(self) -> None:
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+
+
 def capture_loop(url: str, shared: Shared, disp_w: int) -> None:
     backoff = 1.0
+    drop_rate = Rate(window=3.0)
     while True:
-        src = LiveRTSPSource(url)
+        src = LowLatencyCapture(url)
         try:
-            info = src.open()
-            scale = disp_w / max(1, info.width)
-            disp_h = int(round(info.height * scale / 2) * 2)
-            print(f"capture: {info.width}x{info.height} -> {disp_w}x{disp_h}", flush=True)
-            # Never consume faster than the source frame rate. A live camera already paces
-            # itself (so this never sleeps), but a file or a buffered backlog would otherwise
-            # race ahead — which corrupts the wall-clock timing the seizure analyzer relies on.
-            period = 1.0 / info.fps if info.fps and info.fps > 0 else 0.0
-            deadline = time.time()
-            for frame in src.frames():
-                backoff = 1.0  # a real frame arrived; only now is the connection healthy
-                img = frame.image
+            src.open()
+            scale = disp_w / max(1, src.width)
+            disp_h = int(round(src.height * scale / 2) * 2)
+            print(
+                f"capture: {src.width}x{src.height} @ {src.fps:.1f} -> {disp_w}x{disp_h}"
+                f" (dropped {src.dropped} queued frames on connect)",
+                flush=True,
+            )
+            interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+            while True:
+                img, t_cap, dropped = src.read()
+                if img is None:
+                    raise RuntimeError("stream ended")
+                backoff = 1.0
                 if abs(scale - 1.0) > 1e-3:
-                    interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
                     img = cv2.resize(img, (disp_w, disp_h), interpolation=interp)
-                shared.put_raw(img)
-                if period:
-                    deadline += period
-                    slack = deadline - time.time()
-                    if slack > 0:
-                        time.sleep(slack)
-                    elif slack < -1.0:
-                        deadline = time.time()  # fell far behind (real camera); resync
+                shared.put_raw(img, t_cap)
+                for _ in range(dropped):
+                    shared.drop_fps = drop_rate.tick()
+                # Deliberately no pacing sleep. A live camera paces itself, and sleeping to
+                # the nominal rate is what preserved the connect-time backlog for the whole
+                # session. Consuming as fast as the decoder allows is what drains it.
         except Exception as exc:
             print(
                 f"capture error ({type(exc).__name__}: {exc}); reconnect in {backoff:.0f}s",
@@ -337,6 +465,83 @@ def capture_loop(url: str, shared: Shared, disp_w: int) -> None:
 
 
 _PRUNE_S = 5.0  # drop a track's analyzers this long after it was last seen
+_BOX_KP_THR = 0.3  # keypoint confidence that counts towards a refreshed crop
+_BODY_KP = 8  # keypoints averaged when asking "is this actually a person"
+_CONF_ALPHA = 0.4  # weight of the newest frame in the running body-confidence score
+_PERSON_HOLD = 3  # frames a box must look like a person before it is drawn (kills flicker)
+
+
+def body_confidence(sc: np.ndarray) -> float:
+    """How much like a body the pose model found this box to be.
+
+    The detector of record was trained entirely on rendered warehouse scenes, and its own
+    lane page says precision transfers worse than recall. On this camera it puts boxes on
+    cartons and shelf clutter. A second opinion is cheap and already computed: a real person
+    yields a set of confident, coherent joints, and a carton yields a scatter of weak ones,
+    so the mean of the strongest few keypoint scores separates them without any new model.
+    """
+    if sc.size == 0:
+        return 0.0
+    return float(np.sort(sc)[-_BODY_KP:].mean())
+
+
+def box_from_keypoints(
+    kp: np.ndarray, sc: np.ndarray, fallback: np.ndarray, w: int, h: int
+) -> np.ndarray:
+    """A person's box for the next frame, taken from where their joints just were.
+
+    The detector runs several times a second, the pose runs on every frame, and in between
+    the two a walking person leaves the box they were found in. Cropping the next pose from
+    a stale box costs keypoints exactly when someone is moving, which is when the analyzers
+    need them. The joints found on this frame place the crop for the next one; the detector
+    overwrites this whenever it reports.
+    """
+    m = sc > _BOX_KP_THR
+    if int(m.sum()) < 4:
+        return fallback
+    xs, ys = kp[m, 0], kp[m, 1]
+    x0, x1 = float(xs.min()), float(xs.max())
+    y0, y1 = float(ys.min()), float(ys.max())
+    mx, my = max(12.0, (x1 - x0) * 0.18), max(12.0, (y1 - y0) * 0.12)
+    return np.array(
+        [max(0.0, x0 - mx), max(0.0, y0 - my), min(float(w), x1 + mx), min(float(h), y1 + my)],
+        dtype=np.float32,
+    )
+
+
+def detect_loop(shared: Shared, cfg_path: str, score: float, det_hz: float) -> None:
+    """The detector, on its own thread.
+
+    It costs about 120 ms a frame on this CPU. Run inline it set the pace for everything
+    behind it, which pinned pose sampling near 8 Hz and left the seizure band under-sampled.
+    Here it reads the newest frame whenever it is free, and the pose thread uses whatever it
+    last reported, so a slow detector no longer slows the frame rate a person is measured at.
+    """
+    cfg = yaml.safe_load((REPO / cfg_path).read_text())
+    print("building detector + tracker (ONNX/CPU)...", flush=True)
+    det_m = build_detector(dict(cfg["detector"]))
+    # frame_rate stays at the value the tracker was tuned with: its lost-track window is
+    # counted in 30 fps frames whatever this says, and changing it would change which
+    # tracks survive a gap, which is not a latency question.
+    tracker = ByteTrack(frame_rate=15.0)
+    rate = Rate()
+    last_seq = -1
+    frame_idx = 0
+    min_period = 1.0 / det_hz if det_hz > 0 else 0.0
+    while True:
+        raw, last_seq, t_cap = shared.wait_raw(last_seq)
+        if raw is None:
+            continue
+        t0 = time.perf_counter()
+        d = det_m.detect_one(raw).filter(score)
+        tracked = tracker.update(d, frame_idx)
+        frame_idx += 1
+        shared.put_tracked(tracked, last_seq, t_cap, rate.tick())
+        # Leave the cores to the pose stage between refreshes. Detecting flat out would
+        # starve the thread that has to keep up with the camera.
+        spare = min_period - (time.perf_counter() - t0)
+        if spare > 0:
+            time.sleep(spare)
 
 
 def infer_loop(
@@ -346,13 +551,13 @@ def infer_loop(
     max_pose: int,
     seizure: bool,
     fall: bool,
-    det_every: int = 1,
+    body_conf_min: float = 0.30,
+    min_dim_frac: float = 0.06,
+    seizure_hold_s: float = 5.0,
 ) -> None:
     cfg = yaml.safe_load((REPO / cfg_path).read_text())
-    print("building RTMDet + RTMPose + ByteTrack (ONNX/CPU)...", flush=True)
-    det_m = build_detector(dict(cfg["detector"]))
+    print("building pose (ONNX/CPU)...", flush=True)
     pose_m = build_pose(dict(cfg["pose"]))
-    tracker = ByteTrack(frame_rate=15.0)
     # Seconds a person must stay down-and-still before a fall CONFIRMS. Longer = fewer false
     # alarms (a trip-and-recover never sustains); tune down for a snappier live demo.
     fall_cfg = FallConfig(hold_s=float(os.environ.get("VIVIDLY_FALL_HOLD", "4.0")))
@@ -360,25 +565,27 @@ def infer_loop(
     # tid -> [SeizureAnalyzer|None, FallAnalyzer|None, last_seen]. Each tracked person gets
     # their OWN analyzers so a seizure or fall is gated per-identity through a crowd.
     per_track: dict[int, list] = {}
-    frame_idx = 0
     last_seq = -1
-    tracked = None
-    det_every = max(1, int(det_every))
+    last_det_seq = -1
+    live_box: dict[int, np.ndarray] = {}
+    conf: dict[int, float] = {}     # tid -> running body confidence
+    good: dict[int, int] = {}       # tid -> consecutive frames that looked like a person
     while True:
-        raw, last_seq = shared.wait_raw(last_seq)  # block until a NEW camera frame
+        raw, last_seq, _t_cap = shared.wait_raw(last_seq)  # block until a NEW camera frame
         if raw is None:
             continue
         now = time.time()
-        # The eyes lane (RT-DETRv4-S) costs ~120 ms on this CPU, the pose ~30 ms per person.
-        # Running the detector every iteration would hold pose sampling near 8 Hz, below what
-        # the seizure analyzer's 3-8 Hz band needs. So the detector refreshes every det_every
-        # iterations and the iterations between pose the last tracked boxes on the current
-        # frame: a person moves little in the ~150 ms between refreshes, and the analyzers
-        # see ~18 Hz keypoints instead of ~8.
-        if tracked is None or frame_idx % det_every == 0:
-            d = det_m.detect_one(raw).filter(score)
-            tracked = tracker.update(d, frame_idx)  # Detections with stable track_ids
-        frame_idx += 1
+        h_img, w_img = raw.shape[:2]
+        tracked, det_seq, _det_t = shared.get_tracked()
+        if tracked is None:
+            continue
+        if det_seq != last_det_seq:
+            # A fresh detection is authoritative: it replaces every box carried forward.
+            last_det_seq = det_seq
+            live_box = {
+                int(tracked.track_ids[i]): tracked.xyxy[i].astype(np.float32)
+                for i in range(len(tracked))
+            }
 
         # Pose only the confirmed tracks (bounded for latency: the largest/strongest first).
         all_tids = {int(t) for t in tracked.track_ids} if len(tracked) else set()
@@ -396,7 +603,9 @@ def infer_loop(
         views: list[TrackView] = []
         seen: set[int] = set()
         if idxs:
-            boxes = tracked.xyxy[idxs]
+            boxes = np.stack(
+                [live_box.get(int(tracked.track_ids[i]), tracked.xyxy[i].astype(np.float32)) for i in idxs]
+            )
             poses = pose_m.estimate(raw, boxes)
             for k, i in enumerate(idxs):
                 tid = int(tracked.track_ids[i])
@@ -404,17 +613,28 @@ def infer_loop(
                 ent = per_track.get(tid)
                 if ent is None:
                     ent = [
-                        SeizureAnalyzer() if seizure else None,
+                        SeizureAnalyzer(SeizureConfig(min_hold_s=seizure_hold_s)) if seizure else None,
                         FallAnalyzer(fall_cfg) if fall else None,
                         now,
                         False,  # had an active (non-idle) event last frame
                     ]
                     per_track[tid] = ent
-                kp, sc, box = (
-                    poses.keypoints[k],
-                    poses.scores[k],
-                    tracked.xyxy[i].astype(np.float32),
-                )
+                kp, sc = poses.keypoints[k], poses.scores[k]
+                box = boxes[k].astype(np.float32)
+                live_box[tid] = box_from_keypoints(kp, sc, box, w_img, h_img)
+
+                # Is this a person at all? Anything that fails is tracked but neither drawn
+                # nor fed to an analyzer, so a carton cannot accumulate a seizure state.
+                c = body_confidence(sc)
+                conf[tid] = c if tid not in conf else (1 - _CONF_ALPHA) * conf[tid] + _CONF_ALPHA * c
+                longest = max(float(box[2] - box[0]), float(box[3] - box[1]))
+                big_enough = longest >= min_dim_frac * h_img
+                if conf[tid] >= body_conf_min and big_enough:
+                    good[tid] = good.get(tid, 0) + 1
+                else:
+                    good[tid] = 0
+                if good[tid] < _PERSON_HOLD:
+                    continue
                 sz = ent[0].update(kp, sc, now) if ent[0] else SeizureState()
                 fl = ent[1].update(kp, sc, box, now) if ent[1] else FallState()
                 ent[2] = now
@@ -438,39 +658,53 @@ def infer_loop(
             if now - ent[2] > _PRUNE_S:
                 del per_track[tid]
 
-        shared.put_frame(views, rate.tick())
+        shared.pose_fps = rate.tick()
+        shared.put_frame(views, shared.pose_fps)
         shared.infer_seq += 1
 
 
-def composite_loop(shared: Shared, max_fps: float, kp_thr: float, quality: int) -> None:
+def composite_loop(
+    shared: Shared, max_fps: float, kp_thr: float, quality: int, hud: str = "demo"
+) -> None:
+    """Draw and publish once per camera frame, and time the result.
+
+    The old loop ran on a fixed 30 fps deadline against a 25 fps camera, so a fifth of the
+    JPEGs a viewer received were re-encodings of a frame they already had, and a frame could
+    sit up to a full period waiting for the next deadline. Composing on arrival removes both.
+    The poll is 2 ms rather than a condition wait: a blocking wakeup measured about 40 ms
+    under thread contention on this machine, which would have put back most of what the
+    deadline cost.
+    """
     enc = [cv2.IMWRITE_JPEG_QUALITY, quality]
-    period = 1.0 / max_fps
     rate = Rate()
-    deadline = time.time()
+    last_seq = -1
+    min_period = 1.0 / max_fps if max_fps and max_fps > 0 else 0.0
     while True:
-        # Poll the latest frame (a blocking condition-wait here costs ~8 fps of wakeup
-        # latency under 3-thread contention; polling + absolute-deadline pacing does not).
-        raw, _ = shared.get_raw()
-        if raw is None:
-            time.sleep(0.01)
+        raw, seq, t_cap = shared.get_raw()
+        if raw is None or seq == last_seq:
+            time.sleep(0.002)
             continue
-        tracks, infer_fps = shared.get_frame()
-        persons = len(tracks)
+        last_seq = seq
+        t0 = time.perf_counter()
+        tracks, _ = shared.get_frame()
         canvas = raw.copy()
-        draw_tracks(canvas, tracks, kp_thr)
-        draw_banner(canvas, tracks)
+        if hud != "clean":
+            draw_tracks(canvas, tracks, kp_thr)
+            draw_banner(canvas, tracks)
         disp_fps = rate.tick()
-        draw_hud(canvas, persons, infer_fps, disp_fps)
+        # Capture to composite, measured on every frame. This is the part of the delay this
+        # process owns; the camera's own encode and the network sit in front of it.
+        lat_ms = (time.time() - t_cap) * 1000.0 if t_cap else 0.0
+        shared.lat_ms = lat_ms
+        if hud != "clean":
+            draw_hud(canvas, len(tracks), shared.pose_fps, disp_fps, shared.det_fps, lat_ms, hud)
         ok, buf = cv2.imencode(".jpg", canvas, enc)
         if ok:
             shared.publish(buf.tobytes())
-        # Absolute-deadline pacing: steady cadence without drift, no per-iter sleep math.
-        deadline += period
-        sleep_for = deadline - time.time()
-        if sleep_for > 0:
-            time.sleep(sleep_for)
-        else:
-            deadline = time.time()  # fell behind; resync
+        if min_period:
+            spare = min_period - (time.perf_counter() - t0)
+            if spare > 0:
+                time.sleep(spare)
 
 
 PAGE = b"""<!doctype html><meta charset=utf-8><title>Vividly - live</title>
@@ -537,14 +771,54 @@ def main() -> int:
     ap.add_argument(
         "--display-fps", type=float, default=30.0, help="upper FPS guard (event-driven)"
     )
-    ap.add_argument("--score", type=float, default=0.3)
+    ap.add_argument(
+        "--score",
+        type=float,
+        default=0.5,
+        help="detector score cut. 0.5 is the eyes lane's own precision-leaning operating point",
+    )
+    ap.add_argument(
+        "--body-conf",
+        type=float,
+        default=0.30,
+        help="mean of the strongest keypoint scores a box needs before it counts as a person",
+    )
+    ap.add_argument(
+        "--min-person",
+        type=float,
+        default=0.06,
+        help="a person's longest side, as a fraction of frame height, below which a box is clutter",
+    )
+    ap.add_argument(
+        "--seizure-hold",
+        type=float,
+        default=float(os.environ.get("VIVIDLY_SEIZURE_HOLD", "5.0")),
+        help="seconds the candidate must persist before it confirms",
+    )
+    ap.add_argument(
+        "--hud",
+        choices=("demo", "debug", "clean"),
+        default=os.environ.get("VIVIDLY_HUD", "demo"),
+        help=(
+            "clean: the camera picture and nothing else, for filming footage that will be "
+            "edited and then fed back through the model. demo: wordmark, people in view, "
+            "clock, and a red banner only when an event confirms. debug: adds frame rates "
+            "and the measured delay"
+        ),
+    )
     ap.add_argument("--kp-thr", type=float, default=0.3)
     ap.add_argument("--max-pose", type=int, default=8, help="cap persons sent to pose (latency)")
     ap.add_argument(
         "--det-every",
         type=int,
-        default=int(os.environ.get("VIVIDLY_DET_EVERY", "1")),
-        help="run the detector every N inference iterations; pose runs every iteration on the last tracked boxes",
+        default=1,
+        help="accepted and ignored: the detector now runs on its own thread, see --det-hz",
+    )
+    ap.add_argument(
+        "--det-hz",
+        type=float,
+        default=float(os.environ.get("VIVIDLY_DET_HZ", "8")),
+        help="how often the detector refreshes boxes; pose and the analyzers run on every frame",
     )
     ap.add_argument("--quality", type=int, default=85)
     ap.add_argument(
@@ -567,8 +841,13 @@ def main() -> int:
     shared = Shared()
     for target, args in (
         (capture_loop, (a.url, shared, a.display_width)),
-        (infer_loop, (shared, a.config, a.score, a.max_pose, a.seizure, a.fall, a.det_every)),
-        (composite_loop, (shared, a.display_fps, a.kp_thr, a.quality)),
+        (detect_loop, (shared, a.config, a.score, a.det_hz)),
+        (
+            infer_loop,
+            (shared, a.config, a.score, a.max_pose, a.seizure, a.fall,
+             a.body_conf, a.min_person, a.seizure_hold),
+        ),
+        (composite_loop, (shared, a.display_fps, a.kp_thr, a.quality, a.hud)),
     ):
         threading.Thread(target=target, args=args, daemon=True).start()
 
@@ -580,8 +859,9 @@ def main() -> int:
                 time.sleep(3.0)
                 c, i, pub = shared.raw_seq, shared.infer_seq, shared._pub_seq
                 print(
-                    f"[rates] capture {(c - p[0]) / 3:.1f}  infer {(i - p[1]) / 3:.1f}  "
-                    f"composite {(pub - p[2]) / 3:.1f} fps",
+                    f"[rates] capture {(c - p[0]) / 3:.1f}  pose {(i - p[1]) / 3:.1f}  "
+                    f"det {shared.det_fps:.1f}  composite {(pub - p[2]) / 3:.1f} fps  "
+                    f"delay {shared.lat_ms:.0f} ms  dropped {shared.drop_fps:.1f}/s",
                     flush=True,
                 )
                 p = (c, i, pub)
