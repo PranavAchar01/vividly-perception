@@ -46,7 +46,10 @@ from vividly.analysis import (  # noqa: E402
     SeizureAnalyzer,
     SeizureConfig,
     SeizureState,
+    SubstanceAnalyzer,
+    SubstanceConfig,
 )
+from vividly.hud import draw_substance, substance_banner  # noqa: E402
 from vividly.models.factory import build_detector, build_pose  # noqa: E402
 from vividly.models.tracker import ByteTrack  # noqa: E402
 from vividly.sources import LiveRTSPSource  # noqa: E402
@@ -196,18 +199,27 @@ def _fit_scale(text: str, target_w: int, base: float, thick: int) -> float:
     return base if tw <= target_w else base * target_w / tw
 
 
-def draw_banner(img: np.ndarray, tracks: list[TrackView]) -> None:
+def draw_banner(img: np.ndarray, tracks: list[TrackView], extra: str | None = None) -> None:
     """One aggregate top alert for the whole scene: whichever tracked person is in the most
-    urgent state wins. Silent when everyone is idle; amber while an event builds; red alarm
-    + border once a seizure or fall is CONFIRMED (for person #id)."""
-    if not tracks:
-        return
-    worst = max(tracks, key=_severity)
-    sev = _severity(worst)
-    if sev < 4:  # idle, or an event still building: the screen stays quiet
-        return
+    urgent state wins. Silent when everyone is idle; red alarm + border once a seizure or
+    fall is CONFIRMED (for person #id). `extra` is a line from a detector that is not
+    attached to a person, drawn in the same treatment when no person event outranks it, so
+    the screen never carries two competing alarms."""
+    worst = max(tracks, key=_severity) if tracks else None
+    sev = _severity(worst) if worst is not None else 0
+    if sev < 4 and not extra:
+        return  # idle, or an event still building: the screen stays quiet
     w = img.shape[1]
-    if sev >= 4:  # a CONFIRMED emergency
+    if sev < 4 and extra:
+        banner = extra
+        cv2.rectangle(img, (0, 0), (w - 1, img.shape[0] - 1), _RED, 8)
+        fs = _fit_scale(banner, w - 32, 0.8, 2)
+        (tw, th), _ = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, fs, 2)
+        cx = (w - tw) // 2
+        cv2.rectangle(img, (cx - 16, 42), (cx + tw + 16, 42 + th + 22), _RED, -1)
+        cv2.putText(img, banner, (cx, 42 + th + 12), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), 2, cv2.LINE_AA)
+        return
+    if sev >= 4 and worst is not None:  # a CONFIRMED emergency
         if worst.fall.state == "fall":
             banner = f"FALL DETECTED   person #{worst.tid}   {worst.fall.held_s:0.0f}s"
         else:
@@ -286,6 +298,8 @@ class Shared:
         self.det_fps = 0.0
         self.pose_fps = 0.0
         self.lat_ms = 0.0        # capture -> composite, measured
+        self.substance = None    # latest SubstanceState, published by the substance thread
+        self.substance_fps = 0.0
         self.drop_fps = 0.0      # frames dropped by the drain, per second
 
     def put_raw(self, frame: np.ndarray, t_cap: float) -> None:
@@ -663,6 +677,35 @@ def infer_loop(
         shared.infer_seq += 1
 
 
+def substance_loop(shared: Shared, hz: float, exclude_people: bool) -> None:
+    """The colour detector, on its own thread.
+
+    It costs under 2 ms an update, so it could run on every frame, but a pool on the floor
+    does not move: sampling a few times a second is all the evidence there is, and it leaves
+    the cores to the stages that do have to keep up with the camera.
+    """
+    analyzer = SubstanceAnalyzer(SubstanceConfig())
+    rate = Rate()
+    period = 1.0 / hz if hz > 0 else 0.0
+    last_seq = -1
+    while True:
+        raw, seq, _t = shared.get_raw()
+        if raw is None or seq == last_seq:
+            time.sleep(0.02)
+            continue
+        last_seq = seq
+        t0 = time.perf_counter()
+        boxes = ()
+        if exclude_people:
+            tracks, _ = shared.get_frame()
+            boxes = tuple(v.box for v in tracks)
+        shared.substance = analyzer.update(raw, time.time(), exclude_boxes=boxes)
+        shared.substance_fps = rate.tick()
+        spare = period - (time.perf_counter() - t0)
+        if spare > 0:
+            time.sleep(spare)
+
+
 def composite_loop(
     shared: Shared, max_fps: float, kp_thr: float, quality: int, hud: str = "demo"
 ) -> None:
@@ -688,9 +731,11 @@ def composite_loop(
         t0 = time.perf_counter()
         tracks, _ = shared.get_frame()
         canvas = raw.copy()
+        sub = shared.substance
         if hud != "clean":
             draw_tracks(canvas, tracks, kp_thr)
-            draw_banner(canvas, tracks)
+            draw_substance(canvas, sub, time.time())
+            draw_banner(canvas, tracks, substance_banner(sub))
         disp_fps = rate.tick()
         # Capture to composite, measured on every frame. This is the part of the delay this
         # process owns; the camera's own encode and the network sit in front of it.
@@ -796,6 +841,28 @@ def main() -> int:
         help="seconds the candidate must persist before it confirms",
     )
     ap.add_argument(
+        "--substance",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="run the red-substance colour detector (default on)",
+    )
+    ap.add_argument(
+        "--substance-hz",
+        type=float,
+        default=float(os.environ.get("VIVIDLY_SUBSTANCE_HZ", "8")),
+        help="how often the colour detector samples a frame",
+    )
+    ap.add_argument(
+        "--substance-exclude-people",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "mask tracked people out before scoring. Off by default: it removes red clothing "
+            "as a source of candidates, and it also removes a pool lying against a person, "
+            "which is where one would be"
+        ),
+    )
+    ap.add_argument(
         "--hud",
         choices=("demo", "debug", "clean"),
         default=os.environ.get("VIVIDLY_HUD", "demo"),
@@ -839,7 +906,7 @@ def main() -> int:
         return 2
 
     shared = Shared()
-    for target, args in (
+    threads = [
         (capture_loop, (a.url, shared, a.display_width)),
         (detect_loop, (shared, a.config, a.score, a.det_hz)),
         (
@@ -848,7 +915,10 @@ def main() -> int:
              a.body_conf, a.min_person, a.seizure_hold),
         ),
         (composite_loop, (shared, a.display_fps, a.kp_thr, a.quality, a.hud)),
-    ):
+    ]
+    if a.substance:
+        threads.append((substance_loop, (shared, a.substance_hz, a.substance_exclude_people)))
+    for target, args in threads:
         threading.Thread(target=target, args=args, daemon=True).start()
 
     if os.environ.get("VIVIDLY_TELEMETRY"):

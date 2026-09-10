@@ -2,6 +2,7 @@
 
 from vividly.analysis.fall import FallAnalyzer, FallConfig, FallState
 from vividly.analysis.seizure import SeizureAnalyzer, SeizureConfig, SeizureState
+from vividly.analysis.substance import SubstanceAnalyzer, SubstanceConfig, SubstanceState
 
 __all__ = [
     "FallAnalyzer",
@@ -10,4 +11,7 @@ __all__ = [
     "SeizureAnalyzer",
     "SeizureConfig",
     "SeizureState",
+    "SubstanceAnalyzer",
+    "SubstanceConfig",
+    "SubstanceState",
 ]
