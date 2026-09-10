@@ -189,6 +189,20 @@ def test_flicker_below_duty_does_not_confirm() -> None:
     assert all(h.state != "confirmed" for _t, st in res for h in st.hits)
 
 
+def test_a_sparse_start_does_not_lock_out_red_that_becomes_steady() -> None:
+    # A thin trickle flickers in and out of shadow before it thickens. Duty is judged over a
+    # recent window, so once the red is steady for the hold it confirms; before the fix the
+    # early misses stayed in an episode-long denominator and it never could.
+    cfg = PersonRedConfig(release_s=2.5)
+    an, t0 = primed_analyzer(cfg)
+    sparse = [(scene(discs=[SCALP] if i % 3 == 0 else ()), person()) for i in range(30)]
+    steady = [(scene(discs=[SCALP]), person())] * 40
+    res = run(an, sparse + steady, t0=t0)
+    t_steady = t0 + 30 * DT
+    confirm = next(t for t, st in res if any(h.state == "confirmed" for h in st.hits))
+    assert t_steady < confirm <= t_steady + max(cfg.min_hold_s, 1.0) + DT + 1e-6
+
+
 def test_red_that_moves_to_another_part_restarts_the_clock() -> None:
     cfg = PersonRedConfig()
     an, t0 = primed_analyzer(cfg)

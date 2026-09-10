@@ -139,6 +139,12 @@ _RELEARN_ALPHA = 0.25
 # Fraction of the updates since a candidate's clock started in which the region was actually
 # there (see substance.DUTY_MIN for the measurement behind the value).
 _DUTY_MIN = 0.80
+# Duty is measured over a recent window, not the whole episode. Counting from the first frame
+# meant a candidate that began sparse (a thin trickle that flickers in and out of the hand's
+# shadow) could never reach _DUTY_MIN however steady it later became, because its early
+# misses stayed in the denominator forever. The window is at least as long as the hold, so
+# confirmation still needs the red present on DUTY_MIN of the updates across the hold itself.
+_DUTY_WINDOW_MIN_S = 1.0
 _GROWTH_WINDOW_S = 2.0
 
 # Identity hand-over between tracker ids (see _donor): how recently the old id must have been
@@ -206,6 +212,7 @@ class _Track:
     seen: int = 0
     updates: int = 0
     area_hist: deque = field(default_factory=deque)
+    duty_hist: deque = field(default_factory=deque)  # (t, detected) over the duty window
     last_part: str = ""
     last_area: float = 0.0
     last_head: np.ndarray | None = None  # head keypoint centre, display px
@@ -229,6 +236,7 @@ class _Track:
         self.seed_part = other.seed_part
         self.seen, self.updates = other.seen, other.updates
         self.area_hist = deque(other.area_hist)
+        self.duty_hist = deque(other.duty_hist)
         self.last_part, self.last_area = other.last_part, other.last_area
 
     def rank(self) -> tuple:
@@ -711,6 +719,12 @@ class PersonRedAnalyzer:
 
     # -- state machine ---------------------------------------------------------------------
 
+    def _note_duty(self, tr: _Track, now: float, detected: bool) -> None:
+        tr.duty_hist.append((now, detected))
+        horizon = now - max(self.cfg.min_hold_s, _DUTY_WINDOW_MIN_S)
+        while len(tr.duty_hist) > 1 and tr.duty_hist[0][0] < horizon:
+            tr.duty_hist.popleft()
+
     @staticmethod
     def _clear_episode(tr: _Track) -> None:
         tr.state = "idle"
@@ -720,6 +734,7 @@ class PersonRedAnalyzer:
         tr.seen = 0
         tr.updates = 0
         tr.area_hist.clear()
+        tr.duty_hist.clear()
         tr.last_part = ""
         tr.last_area = 0.0
 
@@ -746,6 +761,7 @@ class PersonRedAnalyzer:
                 tr.active_since = now
                 tr.seen = 0
                 tr.updates = 0
+                tr.duty_hist.clear()
                 tr.seed_part = parts[0]
             elif _PLACE[tr.seed_part] not in {_PLACE[p] for p in parts}:
                 if tr.state == "confirmed":
@@ -758,17 +774,20 @@ class PersonRedAnalyzer:
                     tr.active_since = now
                     tr.seen = 0
                     tr.updates = 0
+                    tr.duty_hist.clear()
                     tr.seed_part = parts[0]
             tr.below_since = None
             tr.seen += 1
             tr.updates += 1
+            self._note_duty(tr, now, True)
             held = now - tr.active_since
             if tr.state != "confirmed":
-                duty = tr.seen / tr.updates
+                duty = sum(d for _, d in tr.duty_hist) / len(tr.duty_hist)
                 ready = held >= cfg.min_hold_s and duty >= _DUTY_MIN
                 tr.state = "confirmed" if ready else "candidate"
         elif tr.active_since is not None:
             tr.updates += 1
+            self._note_duty(tr, now, False)
             if tr.below_since is None:
                 tr.below_since = now
             if now - tr.below_since >= cfg.release_s:
