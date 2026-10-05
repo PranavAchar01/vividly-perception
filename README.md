@@ -8,6 +8,31 @@
 
 </div>
 
+> **Public research snapshot (published 4 October 2026).** This is a research prototype. It has
+> not been tested on patients or in a hospital, it is not a medical device, and nothing here is
+> a clinical claim. The convulsion lane in particular is weak on real seizure video.
+
+## About this repository
+
+| | |
+|---|---|
+| **What it is** | The perception code, configs, tests and measurement record for a camera rig that flags observable events (a fall, a person who stays down, convulsion-like movement, a red substance on a person) from an ordinary security camera, with all computation on site. |
+| **Demo** | [27 second reel of the live overlay](https://drive.google.com/file/d/1PpYCmE7zFyatbmlDyD680qorDy4KjOr4/view), staged in a garage with the author as the subject. |
+| **When** | Developed 30 July to 10 September 2026 in a private repository. |
+| **Who** | Pranav Achar and Sahiel Bose. Sahiel launched the GPU training runs and made most of the commits in the private history (437 commits up to 7 September), which is imported here as a single snapshot commit. The commits after it, dated 9 and 10 September, are Pranav's work on the live camera rig, the fall alarm on screen and the red-substance detector, replayed with their original dates. |
+| **Not included** | Model weights (the `.onnx` graphs under `final_models/`; the lane pages and validation curves are kept), so commands that load a graph will not run from this copy. An internal legal-questions document referenced by `POLICY.md` is also left out. |
+| **Licence** | None granted yet. All rights reserved by the authors; third-party code and datasets keep their own terms (see `docs/LICENCE_ALLOWLIST.md`). |
+
+<p align="center">
+  <img src="docs/media/rig.jpg" alt="The rig: PoE security camera, PoE network box, Ethernet adapter, laptop" width="48%" />
+  <img src="docs/media/demo-fall.jpg" alt="Frame from the live overlay after a staged fall" width="48%" />
+</p>
+
+The rig is a Reolink RLC-810A PoE camera, a PoE network box on a closed local network, and a
+laptop that runs detection, tracking, pose and the event logic. Contact: achar.pranav@gmail.com.
+
+---
+
 Vividly watches a waiting room for two acute events, a collapse to the floor and a rhythmic
 convulsion, and for a patient who leaves through an exit without being discharged. A geometric
 rule proposes a candidate from track state, a trained verifier confirms it, and only a
